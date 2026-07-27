@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Distribution name is provisional. The published package name is open decision 1 in PLAN.md
+# and nothing is reserved on PyPI yet. The import path `metrology` is open decision 2.
+name = "llm-eval-metrology"
+version = "0.0.0"
+description = "Measurement layer for LLM evaluation: instrument certification, bias correction against a declared anchor, and reported resolving power."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Jane Yeung" }]
+requires-python = ">=3.11"
+
+# Engine runtime dependencies. This list is the import boundary enforced by
+# `make import-check`: stdlib, numpy, scipy, and nothing else, so the engine stays
+# portable to pyodide. Exact versions used for reproduction live in requirements.txt.
+dependencies = ["numpy>=1.26", "scipy>=1.11"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.5"]
+
+[tool.setuptools]
+packages = ["metrology"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["metrology/cards/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]

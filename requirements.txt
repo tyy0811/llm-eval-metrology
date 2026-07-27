@@ -1,0 +1,12 @@
+# Exact pins for reproduction. `make reproduce` and CI install from this file so that
+# result files are byte-identical across machines. Bumping a pin is a change that requires
+# re-running every experiment's reproduce target and recording the result in docs/DECISIONS.md.
+#
+# Recorded from the authoring environment on 2026-07-27, Python 3.11.4.
+numpy==1.26.4
+scipy==1.17.1
+
+# Development tooling. Pinned for the same reason: ruff formatting and lint output must not
+# drift between a local run and CI.
+pytest==8.2.0
+ruff==0.15.8
