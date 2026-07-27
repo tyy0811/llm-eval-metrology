@@ -187,4 +187,64 @@ system and noted in the limitations.
 
 ## 10. Deviations
 
-None yet. Each entry below is appended, never edited, with a UTC timestamp and a reason.
+Each entry below is appended, never edited, with a UTC timestamp and a reason. The body above is
+frozen and is not amended by these entries, including where an entry corrects an error in it.
+
+### D1, 2026-07-27T12:58:59Z, the primary count is analytically forced, not merely likely
+
+**Reason.** Pre-registration review, before any data was fetched, established that the registered
+headline is not "likely near zero" as section 2.2 implies. Conditional on the registered top 20
+standing, it is **forced to be exactly zero**, and no per-instance data can change it.
+
+**Derivation.** For an adjacent pair whose resolved counts differ by *g*, integrity gate 3 fixes *g*
+from the published rate. Writing the discordant counts as *n01* and *n10*, the count difference
+forces *n10 - n01 = g*. The exact two-sided McNemar test is a binomial test at p = 0.5 on
+*n_d = n01 + n10*. The smallest attainable p-value occurs when all discordance runs one way, that is
+*n01 = 0* and *n_d = g*, giving
+
+```
+p_min = 2^(1 - g)
+```
+
+and p increases monotonically as *n_d* grows beyond *g*. Verified against `scipy.stats.binomtest`
+for every gap present in the registered set, and the monotonicity checked numerically.
+
+The largest registered gap is 7 instances, so **every raw p-value in this family is at least
+0.015625**. Holm requires the smallest p-value in a family of *m* to fall below alpha / *m*:
+
+| Family | m | Threshold | Smallest attainable p |
+|---|---:|---|---|
+| Primary, all adjacent pairs | 19 | 0.05 / 19 = 0.002631579 | 0.015625 |
+| Secondary, non-tied pairs | 10 | 0.05 / 10 = 0.005 | 0.015625 |
+
+Neither family can reject anything, whatever the per-instance overlap turns out to be.
+
+**What this changes.** The primary result is analytic rather than empirical. The count of
+distinguishable adjacent pairs is zero by arithmetic, and the run confirms rather than determines
+it. Section 2.1 already registered 9 of the 19 pairs as tie-forced; this entry extends the same
+reasoning to the remaining 10, which section 2.2 had treated as merely unlikely to clear.
+
+**What this does not change.** N, adjacency, tie handling, the four tests, the seeds, the integrity
+gates, the coverage rule, and the reporting rule all stand as registered. The analysis still runs in
+full, because the data are still required for the discordance counts, the paired bootstrap
+intervals, the MDE, the verdict cards, and the family summary card. Only the distinguishable-pair
+count is settled in advance.
+
+**Conditionality.** The forcing holds conditional on the registered top 20 standing, which means
+conditional on integrity gate 3 passing and on the coverage rule not substituting an entry. Any
+substitution changes the gap vector, and this derivation must then be recomputed and appended as a
+further deviation before the primary is reported.
+
+**Effect on the finding.** This strengthens it. The claim is no longer "we tested the top 20 and
+separated none of them" but "at 500 instances this benchmark cannot separate any adjacent pair in
+its own published top 20, and that is decidable without running the comparison."
+
+### D2, 2026-07-27T12:58:59Z, arithmetic error in section 2.2
+
+**Reason.** Same review. Section 2.2 states "Ten of the pairs differ by 0 instances and the rest by
+1 to 7." That is wrong and contradicts section 2.1 of the same document.
+
+**Correction.** The registered gap vector contains **nine** zeros, not ten. Of the 19 adjacent
+pairs, 9 differ by 0 instances and 10 differ by 1 to 7, which matches the "9 tie-forced, 10 admit a
+real test" split registered in section 2.1. The frozen body is left as written; this entry is the
+correction of record.
