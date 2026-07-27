@@ -38,7 +38,7 @@ There is no `train` or `dev` split to disambiguate. Instance IDs are strings of 
 The leaderboard's Verified board has **180 entries**. Artifacts live under two directories of
 `SWE-bench/experiments`, and the two directories use **incompatible file formats**. This was the
 single most consequential recon finding, because a fetch script written against one format silently
-excludes a fifth of the board.
+excludes 47 of the 180 entries, which is 26.1 percent, slightly more than a quarter of the board.
 
 **Format A**, `evaluation/verified/<folder>/results/results.json`, used by 134 folders:
 
@@ -193,15 +193,26 @@ The artifact repo carries **no explicit license**. Its README states the logs ar
 accessible and meant to enable greater reproducibility and transparency", which is a statement of
 intent and not a grant of rights.
 
-This does not block the experiment, and the reason is the guardrail already in PLAN.md section 2:
-ship derived label tables, checksums, and fetch scripts only. What Experiment 1 commits is a table
-of binary resolved/not-resolved outcomes keyed by instance ID and system, which are facts about
-public benchmark runs, together with a script that re-derives them from the pinned upstream. No
-logs, trajectories, patches, or source texts are copied into this repo. Attribution to SWE-bench and
-to each submitting team is recorded in the derived table's provenance and in the experiment README.
+**This is an unresolved rights risk, not a cleared one.** GitHub's own documentation states that
+without a license, default copyright rules apply, and that making a repository public grants
+principally the right to view and fork it, not broader reuse rights. Whether deriving and
+redistributing a binary outcome table falls outside that restriction is a legal question, and
+nothing in this recon note settles it.
 
-If any rights question is ever raised, the fetch script plus checksums reproduce everything from
-upstream, so the derived table can be removed without the experiment becoming unreproducible.
+What can be said is the technical mitigation, which is the guardrail already in PLAN.md section 2:
+ship derived label tables, checksums, and fetch scripts only. What Experiment 1 would commit is a
+table of binary resolved or not-resolved outcomes keyed by instance ID and system, together with a
+script that re-derives them from the pinned upstream. No logs, trajectories, patches, or source
+texts would be copied into this repo. Attribution to SWE-bench and to each submitting team is
+recorded in the derived table's provenance and in the experiment README. Because the fetch script
+plus checksums reproduce everything from upstream, the derived table can be removed at any time
+without the experiment becoming unreproducible.
+
+**Action required before T3.1.** Either obtain explicit permission from the upstream maintainers, or
+make a recorded decision to proceed on the strength of the mitigation above with the residual risk
+accepted, or restrict the committed artifact to checksums plus the fetch script so that no derived
+table is redistributed at all. This is a decision for Jane, not one the code can make, and it blocks
+committing a derived table rather than blocking the analysis.
 
 **Submission policy note.** Since 2025-11-18 the Verified board accepts submissions only from
 academic teams and research institutions with open-source methods and peer-reviewed publications.
