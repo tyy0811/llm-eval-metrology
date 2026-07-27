@@ -194,7 +194,11 @@ Pinning the interpreter alone would have addressed one of those seven.
 The canonical reproduction environment is therefore defined as a whole:
 
 1. **Runner image `ubuntu-24.04`**, not `ubuntu-latest`. The `latest` label moves when GitHub rolls
-   images, which would silently change the environment that defines byte identity.
+   images, which would silently change the environment that defines byte identity. This pins the
+   image line and not the image: the first run under this policy reported Ubuntu 24.04.4, and point
+   releases will arrive inside the same label. Escalating to a digest-pinned container is the option
+   if that ever proves to matter, and item 4 is what would surface it as a loud failure rather than
+   a wrong number.
 2. **Python 3.11.15**, exact patch. A bare `"3.11"` resolves to whatever the tool cache holds.
 3. **The exact pins in `requirements.txt`**, unchanged.
 4. **Checksums generated in CI are canonical.** A local run on macOS or another patch version is a
