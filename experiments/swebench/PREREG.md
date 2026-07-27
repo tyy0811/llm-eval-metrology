@@ -248,3 +248,39 @@ its own published top 20, and that is decidable without running the comparison."
 pairs, 9 differ by 0 instances and 10 differ by 1 to 7, which matches the "9 tie-forced, 10 admit a
 real test" split registered in section 2.1. The frozen body is left as written; this entry is the
 correction of record.
+
+### D3, 2026-07-27T13:13:53Z, two corrections to D1
+
+**Reason.** Review of D1. Deviations are append-only, so D1 is left as written and this entry is the
+correction of record for both points below. Neither affects the 0.015625 bound or the forced-zero
+conclusion.
+
+**Correction 1, the closed form is not valid at g = 0.** D1 writes `p_min = 2^(1 - g)`, which
+evaluates to 2 at g = 0 and is therefore not a probability. The precise expression is
+
+```
+p_min(g) = min(1, 2^(1 - g))
+```
+
+equivalently `p_min = 1` for g = 0, and `2^(1 - g)` for g >= 1. It is also worth recording what D1
+left implicit: since `n_d = n01 + n10` and `n10 - n01 = g`, the feasible discordance totals are
+
+```
+n_d = g, g + 2, g + 4, ...
+```
+
+that is, `n_d = 2 * n01 + g`, so `n_d` always shares the parity of `g`. The minimum over feasible
+`n_d` is attained at `n01 = 0`. Verified against `scipy.stats.binomtest` across the feasible `n_d`
+for every gap in the registered set: at g = 0 and g = 1 every feasible configuration yields exactly
+p = 1.0, and at g = 7 the minimum is 0.015625 at `n_d` = 7.
+
+**Correction 2, provenance wording in D1 is too strong.** D1 states that the review happened
+"before any data was fetched". Structural upstream data had already been inspected during recon,
+which `docs/recon_swebench.md` discloses. The accurate claim is that the review, and this
+pre-registration, happened
+
+> after structural recon, but before any committed derived-data artifact or per-instance comparison.
+
+That is what the git history actually evidences. The same narrower wording replaces "before any
+data was fetched" wherever this experiment's provenance is described, including in the status line
+of this document and in any findings block generated later.
