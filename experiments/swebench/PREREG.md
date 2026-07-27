@@ -318,3 +318,92 @@ O2); any answer is appended here as a further deviation.
 
 **Not registered as an analysis change.** No test, threshold, or estimand changes. This entry adds a
 disclosure obligation only.
+
+### D5, 2026-07-27T13:41:01Z, the mechanism behind D4, and a pre-specified straddle diagnostic
+
+**Reason.** D4 recorded the comparability threat but not its direction, and direction decides whether
+the threat can overturn the null or only qualify the surrounding quantities.
+
+**Why D4 cannot overturn the null.** The floor established in D1 and D3,
+`p_min(g) = min(1, 2^(1 - g))`, is a minimum **over every feasible discordance configuration**. It
+depends only on the resolved-count gap `g`, which integrity gate 3 fixes from the published rates.
+Harness heterogeneity perturbs discordance, not `g`. The floor is therefore immune to it.
+
+One refinement, because the direction is the opposite of the intuitive one and the distinction
+should be on the record. For fixed `g`, the exact p-value **increases** with the discordance total
+`n_d`, verified numerically: at g = 7 the p-values across feasible `n_d` of 7, 9, 11, 13, 15 are
+0.015625, 0.039062, 0.065430, 0.092285, 0.118469. Spurious disagreement inflates `n_d`, so it
+inflates p. Removing harness noise would move each p **downward, toward the floor and toward
+significance**, never upward.
+
+So the correct claim is that the null is **immune** to comparability, not that comparability
+reinforces it. A noise-free re-evaluation could only push observed p-values down to the floor, and
+the floor at the registered gaps still cannot clear either Holm threshold. The conclusion in D1
+stands, by a stronger argument than "the noise was helping us".
+
+The caveat is the one D1 already registered: this holds conditional on the published resolved counts.
+If a uniform re-evaluation changed the counts themselves, `g` changes, and the derivation is redone
+and appended.
+
+**The case that does bite is systematic, not symmetric.** A documented evaluation fix partitions
+submissions into a pre-boundary and a post-boundary population judged under different criteria. Two
+entries straddling such a boundary could differ by artifact rather than capability, and that is
+directional rather than noise.
+
+**Pre-specified diagnostic.** Group the analyzed entries by submission date relative to the
+SWE-bench evaluation fix documented for April 2024, and report which adjacent pairs straddle it.
+Reported whatever the result, alongside the primary.
+
+**Measured now, from published submission dates only.** Zero of the registered top 20 predate
+2024-04-15. The earliest submission date in the analyzed set is 2025-06-03, more than a year after
+the fix, and **no adjacent pair straddles the boundary**. For contrast, 8 of the 180 board entries
+do predate it, all far below the analyzed region. The directional case is therefore inert for this
+particular analysis, which is a fact worth reporting rather than a reason to drop the diagnostic:
+the general threat in D4 stands, because harness changes after April 2024 remain possible and remain
+unrecorded.
+
+**Also asked upstream** in `SWE-bench/experiments` issue
+[#462](https://github.com/SWE-bench/experiments/issues/462): whether archived artifacts reflect the
+original evaluation or a post-fix re-run. If everything was re-evaluated under a single harness, D4
+largely dissolves. Any answer is appended here.
+
+### D6, 2026-07-27T13:41:01Z, the exact test convention is declared, not left to the implementation
+
+**Reason.** The floor `min(1, 2^(1 - g))` holds only under a particular definition of the two-sided
+exact p-value. Leaving the convention implicit would let `paired.py` and its fixtures disagree by
+definition while looking like a bug.
+
+**Declared convention.** `paired.py` implements the two-sided exact McNemar test as **twice the
+smaller binomial tail at p = 0.5, capped at 1**:
+
+```
+p = min(1, 2 * P(X <= min(n01, n10)))    with X ~ Binomial(n01 + n10, 0.5)
+```
+
+**Explicitly not used:** the mid-p correction, and any convention that would alter the floor.
+
+Recorded from verification rather than assumed: for the symmetric case p = 0.5 the "sum of all
+outcomes no more probable than the observed" rule, which is what `scipy.stats.binomtest` implements
+for `alternative="two-sided"`, **coincides exactly** with the doubling rule at every gap from 0 to
+10. The two conventions are interchangeable here, and either satisfies the floor.
+
+The mid-p correction does not. It yields `2^(-g)`, exactly half the doubling value, which lowers
+every threshold below by one gap. Mid-p is a defensible choice in other contexts and is excluded
+here because it would break the registered bound.
+
+**Pinned thresholds.** The minimum resolved-count gap at which the floor can clear a threshold at
+all:
+
+| Correction | Threshold | Minimum gap, declared convention | Minimum gap, mid-p |
+|---|---|---:|---:|
+| Uncorrected, alpha 0.05 | 0.05 | 6 | 5 |
+| Holm, m = 10 (secondary family) | 0.005 | 9 | 8 |
+| Holm, m = 19 (primary family) | 0.002631579 | 10 | 9 |
+
+The largest gap in the registered top 20 is **7**. It does not reach 9, let alone 10. This is the
+same forced-zero conclusion as D1, expressed as a hard floor on the gap rather than as a bound on p.
+
+**Fixture requirement for T2.2.** The `paired.py` test suite pins the exact p-value at gaps 0
+through 10 under the declared convention, with gap 0 and gap 1 both returning exactly 1, and
+asserts the convention by name so that a future switch to mid-p fails loudly rather than silently
+shifting every threshold.

@@ -412,3 +412,76 @@ detectors are meant to land later.
 
 It costs about a page per experiment and is updated in the recon phase, when the facts are fresh,
 rather than reconstructed at publication time.
+
+---
+
+## D1.6 An analytically forced result is led with, never buried under a p-value table
+
+**Date:** 2026-07-27
+**Status:** settled by Jane
+
+Experiment 1's primary is forced, not observed (PREREG deviations D1, D3, D6). Any write-up,
+findings block, or card set therefore **states the analytic result first** and presents the computed
+p-values as confirmation of an already-settled conclusion.
+
+**Why the ordering is not cosmetic.** A reader who works out the bound independently after being
+shown a table of non-significant results concludes that arithmetic was dressed up as an experiment,
+and says so publicly. Led with, the same content is a stronger claim than an empirical null: the
+board's adjacent entries disagree on too few instances for any test at this correction level to
+fire, so the leaderboard cannot rank its own top entries no matter which statistics are applied.
+
+**Binding form.** The headline is the resolving-power claim. The p-value table is an appendix or a
+disclosure, never the lead. This applies to the README findings block, the family summary card, and
+any external write-up.
+
+---
+
+## D1.7 Card v1 gains a discordance ruler and a real provenance block
+
+**Date:** 2026-07-27
+**Status:** settled by Jane
+**Refines:** PLAN.md T2.6 and D1.3, and must land in the reference HTML before the renderer exists
+
+Two changes to the seven structural elements, decided before the reference HTML is built rather than
+retrofitted after.
+
+**1. For binary paired comparisons the resolution ruler is expressed in discordance, not in abstract
+effect size.** Observed disagreements, the split, and what the split would have to be for the test
+to fire, on one axis. "43 disagreements, split 25 to 18" is legible to a reader who will never read
+an MDE, and it puts the instrument's limit and the observed data in the same units.
+
+**Implementation warning, found by doing the arithmetic.** The ruler must show the requirement **at
+the observed discordance total**, not the absolute floor. These differ by a lot. Illustratively, at
+43 disagreements split 25 to 18, the net edge is 7 and p is 0.36; to reach the Holm threshold at
+that discordance the net edge would need to be **21**, a split of 11 to 32. The absolute floor of 9
+or 10 net disagreements is reachable only when every disagreement runs one way, which is
+`n_d = g`. Publishing the floor as "what it would take" at a realistic discordance understates the
+requirement roughly threefold. Both numbers may appear; only the at-observed one may be labeled as
+the requirement.
+
+**2. The card JSON gains a provenance block with real fields**, because D4 created a standing
+disclosure obligation: source, pinned upstream revision, fetch date, and the named deviations that
+qualify the result. This lands in T2.5 and T2.6, not in Phase 8, since a card rendered before the
+block exists would need reissuing.
+
+---
+
+## D1.8 Every number in prose must be a member of the committed aggregates
+
+**Date:** 2026-07-27
+**Status:** settled by Jane
+**Strengthens:** the PLAN.md section 2 guardrail on hand-typed numbers
+
+The plan's rule is that every figure in prose comes from a generator reading a results file, which
+is verified by tracing. The stronger and mechanically checkable form:
+
+> Every number appearing in any prose output must appear in the committed aggregates file.
+
+That is set membership, not provenance tracing, so a checker can enforce it without understanding
+how any number was produced. It composes with D1.4, under which the committed aggregates are exactly
+the de minimis figures (per-entry resolve totals, discordance counts) plus our computed results,
+while the derived per-instance table stays untracked.
+
+`reporting.py` is therefore designed backwards from the card JSON and the findings block: the
+aggregates file is the contract, and anything prose needs that the aggregates lack is a reason to
+extend the generator, never a reason to type a number.
