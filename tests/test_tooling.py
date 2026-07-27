@@ -7,6 +7,7 @@ because a green reproduce is meant to be evidence that committed results regener
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -16,6 +17,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = REPO_ROOT / "Makefile"
 REQUIREMENTS = REPO_ROOT / "requirements.txt"
+CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 REQUIRED_TARGETS = ("test", "lint", "dash-check", "import-check", "reproduce")
 
@@ -53,6 +55,33 @@ def test_engine_runtime_dependencies_are_available() -> None:
 
     assert numpy.__version__
     assert scipy.__version__
+
+
+def ci_config_without_comments() -> str:
+    """The workflow's effective configuration.
+
+    Comments are stripped so that prose explaining why a moving label is wrong cannot be
+    mistaken for the workflow using one.
+    """
+    lines = CI_WORKFLOW.read_text(encoding="utf-8").splitlines()
+    return "\n".join(line for line in lines if not line.strip().startswith("#"))
+
+
+def test_ci_pins_an_exact_runner_image() -> None:
+    """docs/DECISIONS.md D0.9 item 1: a moving image label is not a reproduction environment."""
+    config = ci_config_without_comments()
+
+    assert "runs-on: ubuntu-24.04" in config
+    assert "ubuntu-latest" not in config
+
+
+def test_ci_pins_an_exact_python_patch_version() -> None:
+    """docs/DECISIONS.md D0.9 item 2: a bare minor version resolves to a moving patch."""
+    declared = re.findall(r'python-version:\s*"([^"]+)"', ci_config_without_comments())
+
+    assert declared, "the workflow declares no python-version"
+    for version in declared:
+        assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"'{version}' is not an exact patch version"
 
 
 @pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")

@@ -174,3 +174,50 @@ targets, CI running all four checks plus the reproduce-fails assertion on push, 
 `metrology/` holds only a package docstring and a version. Experiment directories are created in
 the phase that pre-registers them, so an empty `experiments/swebench/` cannot be mistaken for work
 in progress.
+
+**Verified.** CI run 30264160697 succeeded on `main` at commit 6721989, all ten steps including the
+assertion that `make reproduce` still fails. Confirmed independently by Jane.
+
+---
+
+## D0.9 Canonical reproduction environment
+
+**Date:** 2026-07-27
+**Status:** settled for the environment, normative for the serialization rules
+**Refines:** D0.5, which pinned dependencies and named the authoring machine as the reference
+
+Exact dependency pins are necessary for byte identity and not sufficient for it. Operating system,
+wheel provenance, runner image updates, Python patch version, output formatting, timestamps, and
+iteration order can each break byte identity while every pin in `requirements.txt` is satisfied.
+Pinning the interpreter alone would have addressed one of those seven.
+
+The canonical reproduction environment is therefore defined as a whole:
+
+1. **Runner image `ubuntu-24.04`**, not `ubuntu-latest`. The `latest` label moves when GitHub rolls
+   images, which would silently change the environment that defines byte identity.
+2. **Python 3.11.15**, exact patch. A bare `"3.11"` resolves to whatever the tool cache holds.
+3. **The exact pins in `requirements.txt`**, unchanged.
+4. **Checksums generated in CI are canonical.** A local run on macOS or another patch version is a
+   convenience for development, not evidence. A local mismatch is not by itself a defect; a CI
+   mismatch is.
+5. **Deterministic serialization.** Result writers must produce stable bytes: explicit sort order on
+   the schema key columns rather than dict or set iteration order, fixed float formatting rather
+   than repr, sorted keys in JSON, LF line endings, and a trailing newline.
+6. **No timestamps, and no other ambient state, in result files.** No wall-clock times, durations,
+   hostnames, absolute paths, library versions embedded inline, or run identifiers. Provenance of
+   that kind belongs in the CI log and in the card's provenance seal, not in the bytes being
+   checksummed. Seeds are recorded in results because they are inputs, not ambient state.
+
+**What is enforced now.** Items 1 to 3 are in `.github/workflows/ci.yml` as of this commit, along
+with the action version updates that removed the Node 20 deprecation. CI now also records the OS,
+the interpreter, and the full resolved dependency set on every run.
+
+**What is not yet code.** Items 4 to 6 cannot be implemented at Phase 0 because no result file and
+no serializer exist. They are normative for the modules that will write results: `reporting.py` in
+Phase 2, then `fetch.py` and `run.py` in Phase 3. T3.5, the first phase where `make reproduce`
+regenerates anything, is the deadline for all three and the point at which committed checksums
+first mean something.
+
+**Why this is worth the pedantry.** The claim this repo sells is that its numbers regenerate. A
+reproduction gate that passes because nothing varied on one machine, and fails for the first
+external person who runs it, is worse than no gate, because it was believed.

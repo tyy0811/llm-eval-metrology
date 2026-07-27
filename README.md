@@ -61,6 +61,12 @@ make reproduce      regenerate result files from committed inputs
 
 `make reproduce` fails loudly until an experiment produces results.
 
+Reproduction is defined against a canonical environment, not against any developer's machine:
+the `ubuntu-24.04` runner, Python 3.11.15, and the exact pins in `requirements.txt`, with the
+checksums generated in CI treated as canonical. See `docs/DECISIONS.md` D0.9. A local run on
+another operating system or patch version is a development convenience, so a local mismatch is
+not by itself a defect, while a CI mismatch is.
+
 The import boundary exists because the engine is meant to run client-side under pyodide later, so
 `metrology/` stays pure Python with numpy and scipy as its only third-party imports. Heavier
 dependencies such as pandas are permitted in `experiments/` only.

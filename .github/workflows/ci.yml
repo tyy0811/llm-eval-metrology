@@ -9,13 +9,18 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Canonical reproduction environment, see docs/DECISIONS.md D0.9. Pinned to a specific
+    # runner image rather than ubuntu-latest, because byte identity of result files must not
+    # move when GitHub rolls the latest label to a new image.
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          # Exact patch version. "3.11" resolves to whatever patch the tool cache holds,
+          # which is a moving target and therefore not a reproduction environment.
+          python-version: "3.11.15"
           cache: pip
           cache-dependency-path: requirements.txt
 
@@ -23,10 +28,15 @@ jobs:
       - name: Install pinned dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
+      # Provenance for every run. When result files exist, this is the record that says which
+      # environment produced the canonical checksums.
       - name: Record environment
         run: |
+          uname -srm
+          grep PRETTY_NAME /etc/os-release
           python --version
           python -c "import numpy, scipy; print('numpy', numpy.__version__); print('scipy', scipy.__version__)"
+          python -m pip freeze
           python -m ruff --version
           python -m pytest --version
 

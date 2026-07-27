@@ -1,8 +1,14 @@
-# Exact pins for reproduction. `make reproduce` and CI install from this file so that
-# result files are byte-identical across machines. Bumping a pin is a change that requires
-# re-running every experiment's reproduce target and recording the result in docs/DECISIONS.md.
+# Exact pins for reproduction. `make reproduce` and CI install from this file.
 #
-# Recorded from the authoring environment on 2026-07-27, Python 3.11.4.
+# These pins are necessary for byte identity but not sufficient for it. The canonical
+# reproduction environment is defined in docs/DECISIONS.md D0.9: ubuntu-24.04, Python 3.11.15,
+# these pins, with checksums generated in CI. A local run on another OS or patch version is a
+# convenience, not evidence.
+#
+# Bumping any pin requires re-running every experiment's reproduce target, regenerating the
+# canonical checksums in CI, and recording the outcome in docs/DECISIONS.md.
+#
+# Versions recorded on 2026-07-27.
 numpy==1.26.4
 scipy==1.17.1
 
