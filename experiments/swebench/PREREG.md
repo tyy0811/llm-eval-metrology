@@ -407,3 +407,37 @@ same forced-zero conclusion as D1, expressed as a hard floor on the gap rather t
 through 10 under the declared convention, with gap 0 and gap 1 both returning exactly 1, and
 asserts the convention by name so that a future switch to mid-p fails loudly rather than silently
 shifting every threshold.
+
+### D7, 2026-07-27T13:53:49Z, the headline needs no upstream artifacts, and D4's disclosure narrows
+
+**Reason.** Review noted a property of the primary that neither D1 nor D6 stated, and that changes
+where the D4 caveat attaches.
+
+**The headline depends on published resolve rates and nothing else.** Its three inputs are the
+adjacent gap vector, which follows from the published rates because one instance is 0.2 percent of
+500; the floor `min(1, 2^(1 - g))` under the convention declared in D6; and the Holm threshold, which
+follows from alpha and the family size. Confirmed by computing the separable count from the pinned
+leaderboard file alone: **0 of 19**, every gap below the primary floor of 10.
+
+Consequences worth stating plainly:
+
+- The primary requires **no per-instance artifacts, no fetch, and no derived table**. It would stand
+  if the fetch never ran.
+- It therefore raises **no licensing question at all**, which is a stronger position than the one
+  D1.4 already secured by shipping a pipeline rather than a database.
+- **D4 cannot touch it**, not merely as a matter of direction (D5) but because harness comparability
+  is a property of per-instance evaluation, and the headline reads none.
+- Anyone can verify it from the public leaderboard with a calculator in a few minutes, which makes
+  it the most defensible claim this experiment can publish.
+
+**Narrowed disclosure obligation.** D4 required its limitation to appear in the findings block, the
+cards' provenance seal, and any write-up. That scope is now too broad and would mislead: a reader
+seeing the harness caveat attached to the headline would infer the headline is contingent on it.
+D4's disclosure attaches to the **secondary quantities only**, being the discordance counts, the
+paired bootstrap intervals, and the MDE, all of which do read per-instance data.
+
+The headline instead carries a positive statement of its own provenance: that it derives from
+published resolve rates alone. The write-up says explicitly that the per-instance work
+**characterizes the finding but cannot overturn it**.
+
+D4 is otherwise unchanged and its diagnostic under D5 still runs.

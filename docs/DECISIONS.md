@@ -485,3 +485,134 @@ while the derived per-instance table stays untracked.
 `reporting.py` is therefore designed backwards from the card JSON and the findings block: the
 aggregates file is the contract, and anything prose needs that the aggregates lack is a reason to
 extend the generator, never a reason to type a number.
+
+---
+
+## D1.9 Family cards carry a `family_finding`, not a `verdict`
+
+**Date:** 2026-07-27
+**Status:** settled by Jane, approved before incorporation into the reference HTML
+**Refines:** PLAN.md T2.5 and T2.6
+
+Three options were on the table for how a family summary card states its result. Reusing
+`NOT RESOLVED` was rejected as misleading, because it describes one hypothesis rather than the
+resolving power of a family. Adding a fourth verdict such as `UNDERPOWERED` was rejected because it
+pollutes a taxonomy that has to stay stable across three experiments.
+
+**Decision: a dedicated family finding with its own type.**
+
+`verdict` answers a question about two systems. Resolving power answers whether the instrument can
+answer that question at all. Those are different types, and a fourth enum value would overload one
+field with two semantics, which breaks the first time a family card needs to say something with no
+pairwise analogue.
+
+### The contract
+
+- `verdict` is **restricted to pair cards** and takes exactly `RESOLVED`, `NOT RESOLVED`, or
+  `EQUIVALENT`.
+- Family cards carry `family_finding` and **no** `verdict`.
+- The focal component of a family card is a **finding banner**, not a verdict stamp. Same visual
+  language, same provenance block.
+
+`family_finding` is **structured, not a rendered string**, because it recurs in Experiments 2 and 3
+and those should reuse the contract rather than fork it:
+
+```json
+{
+  "card_kind": "family_summary",
+  "family_finding": {
+    "claim_type": "resolving_power",
+    "headline": { "separable_count": 0, "family_size": 19, "unit": "adjacent_pairs" },
+    "criterion": {
+      "statistic": "exact_mcnemar_two_sided_doubling",
+      "correction": "holm", "alpha": 0.05, "threshold": 0.002631579
+    },
+    "limit": {
+      "best_case_family_floor": 10,
+      "floor_label": "best-case family floor",
+      "observed_extreme": 7,
+      "observed_extreme_label": "largest registered adjacent gap",
+      "inference": "every adjacent gap sits below the floor, so no pair can separate at any discordance configuration"
+    },
+    "scope": { "comparisons": "adjacent pairs only", "excludes": "non-adjacent comparisons" },
+    "conditionality": ["integrity gate 3 passes", "no coverage-rule substitution occurs"],
+    "disclosure": { "applies_to_headline": [], "applies_to_secondary": ["D4 harness comparability"] },
+    "progressive_disclosure": { "secondary_family_floor": 9, "secondary_family_size": 10 }
+  }
+}
+```
+
+### Card face requirements
+
+1. **Define "separable" in one clause on the face.** It is not `NOT RESOLVED` with a different
+   accent. `NOT RESOLVED` means the test did not reject. **Not separable means rejection was
+   unreachable regardless of the data**, which is the stronger claim, and a different root word is
+   what stops a reader collapsing the two.
+2. **The floor is labeled "best-case family floor"**, never the at-observed-discordance requirement.
+   Those differ by a lot (D1.7), and mislabeling understates the requirement roughly threefold.
+3. **The inference is rendered, not left to the reader.** "Floor 10, largest gap 7" makes the reader
+   perform the step that carries the whole argument. The `inference` field is displayed between the
+   two numbers.
+4. **A scope line sits under the banner.** "0 of 19 adjacent pairs separable" is correctly scoped
+   but will be quoted as "the top 20 are statistically indistinguishable", which is not the claim.
+   Rank 1 versus rank 20 may well be separable. The line states that non-adjacent comparisons are
+   out of scope, and it costs nothing to pre-empt a misreading that would otherwise attach
+   permanently.
+5. **The secondary floor of 9 sits under progressive disclosure**, not on the face.
+6. Pair cards keep the observed-discordance ruler from D1.7.
+
+### Schema tests
+
+- A family card containing `verdict` is rejected.
+- A pair card missing `verdict` is rejected.
+- **No value anywhere inside `family_finding` may equal `RESOLVED`, `NOT RESOLVED`, or
+  `EQUIVALENT`**, so the distinction cannot leak back in through a string. This is the constraint
+  that actually holds the line, since the field-level split is easy to respect while the semantics
+  are quietly reintroduced in prose.
+
+---
+
+## D1.10 Nineteen full pair cards are not rendered
+
+**Date:** 2026-07-27
+**Status:** settled
+**Supersedes:** the per-pair half of PLAN.md T3.4
+
+T3.4 says to render a verdict card per adjacent pair plus one family summary card. Nineteen cards
+reading `NOT RESOLVED` teach a reader nothing, and repeating the at-observed ruler nineteen times
+spends its complexity where it earns least.
+
+**Decision.** The Experiment 1 card set is:
+
+- one family summary card per D1.9,
+- a compact nineteen-row table of gap, best-case floor, and observed discordance,
+- full pair cards for one or two illustrative cases only, chosen to show the ruler doing real work.
+
+The nineteen-row table still reports every pair, so nothing is hidden and the reporting rule in the
+pre-registration is satisfied. The ruler keeps its complexity where it communicates.
+
+Reversible: if the illustrative cases turn out to under-serve the finding, rendering the full set
+costs one generator run.
+
+---
+
+## D1.11 The headline is provenance-free, and D4's caveat attaches only to the secondary
+
+**Date:** 2026-07-27
+**Status:** settled
+**Cross-reference:** deviation D7 in `experiments/swebench/PREREG.md`
+
+Experiment 1's headline derives from published resolve rates alone: the gap vector follows from the
+rates, the floor from the declared convention, the threshold from alpha and family size. Verified by
+computing the separable count from the pinned leaderboard file with no per-instance data: 0 of 19.
+
+**Why this matters beyond Experiment 1.** It means the strongest claim this repo publishes first is
+one that any reader can re-derive from a public file with a calculator, with no fetch, no derived
+table, and no licensing question. That is the ideal shape for a project whose credibility argument
+is procedural, and it is worth looking for in Experiments 2 and 3: the part of a finding that needs
+no privileged data is the part that survives every objection to the data.
+
+**Consequence for disclosure.** The D4 harness-comparability caveat attaches to the discordance
+counts, intervals, and MDE, which read per-instance data. It does **not** attach to the headline.
+Attaching it there would invite the inference that the headline is contingent on it. The write-up
+says instead that the per-instance work characterizes the finding but cannot overturn it.
