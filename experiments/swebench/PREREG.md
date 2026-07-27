@@ -441,3 +441,52 @@ published resolve rates alone. The write-up says explicitly that the per-instanc
 **characterizes the finding but cannot overturn it**.
 
 D4 is otherwise unchanged and its diagnostic under D5 still runs.
+
+### D8, 2026-07-27T14:17:55Z, the two illustrative pair cards are selected in advance, by rule
+
+**Reason.** `docs/DECISIONS.md` D1.10 replaced nineteen full pair cards with a family card, a
+nineteen-row table, and full cards for one or two illustrative pairs, but left the choice of pairs
+open. Choosing them after seeing discordance would be a post-hoc selection dressed as an
+illustration, so the choice is registered here from published aggregates only.
+
+**Selection rule.**
+
+> Render the first published adjacent pair, and the adjacent pair with the largest published
+> resolved-count gap. Break any maximum-gap tie by earliest published rank.
+
+The rule is registered, not just its output, so that a substitution reapplies it mechanically
+instead of reopening the choice.
+
+**Current selection**, computed from the pinned leaderboard file:
+
+| Card | Pair | Gap | Systems |
+|---|---|---:|---|
+| 1 | ranks 1 and 2 | 0 | `20251215_livesweagent_claude-opus-4-5` versus `20251205_sonar-foundation-agent_claude-opus-4-5` |
+| 2 | ranks 3 and 4 | 7 | `20250928_trae_doubao_seed_code` versus `20251120_livesweagent_gemini-3-pro-preview` |
+
+The maximum gap of 7 is **unique** in the registered top 20, so the tie-break clause is currently
+inert. It is registered anyway because a substitution could make it bind.
+
+**Why two rather than one.** The maximum-gap case alone would omit the tie mechanism, which is where
+half the family sits. Together they carry the two halves of the finding without either being chosen
+for its outcome:
+
+- **Gap 0** shows that equal aggregate counts can conceal substantial disagreement. The ruler will
+  display a discordance total with an exactly balanced split and a net edge of zero, which is what
+  forces p = 1 and is invisible in the published rates.
+- **Gap 7** shows that even the strongest adjacent edge on the board cannot reach significance. It
+  comes closest to the family floor of 10 and therefore makes the ruler do the most explanatory
+  work.
+
+**No post-hoc replacement.** Neither pair may be swapped on the basis of observed discordance, in
+either direction, including for being visually uninteresting. If the coverage rule changes set
+membership, the same selection rule is reapplied to the substituted ordering and the consequence is
+recorded here before any card is rendered.
+
+**Provenance disclosure for card 2.** Rank 4, `20251120_livesweagent_gemini-3-pro-preview`, is one
+of the six board entries whose `checked` field holds the malformed string
+`"false (See README.md for info on how to get your results verified)"` rather than a boolean, a
+defect recorded in `docs/recon_swebench.md`. Verified by type: ranks 1 to 3 carry boolean `False`
+and rank 4 carries the string. That card's provenance block discloses it rather than normalizing it
+silently, since a card illustrating measurement discipline should not quietly clean up its own
+source data.

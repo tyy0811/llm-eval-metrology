@@ -616,3 +616,35 @@ no privileged data is the part that survives every objection to the data.
 counts, intervals, and MDE, which read per-instance data. It does **not** attach to the headline.
 Attaching it there would invite the inference that the headline is contingent on it. The write-up
 says instead that the per-instance work characterizes the finding but cannot overturn it.
+
+---
+
+## D1.12 The two illustrative pair cards are chosen by a registered rule, not after the fact
+
+**Date:** 2026-07-27
+**Status:** settled by Jane
+**Closes:** the choice D1.10 left open
+**Cross-reference:** deviation D8 in `experiments/swebench/PREREG.md`, which is the binding record
+
+D1.10 settled that only one or two pairs get full cards but not which. That gap mattered: selecting
+the illustrative pairs after seeing discordance would be post-hoc selection presented as
+illustration, which is the same failure the pre-registration exists to prevent, just relocated from
+the analysis to the presentation.
+
+**The rule, registered before any per-instance data exists:** render the first published adjacent
+pair, and the adjacent pair with the largest published resolved-count gap, breaking any
+maximum-gap tie by earliest published rank.
+
+It currently selects ranks 1 and 2 at gap 0, and ranks 3 and 4 at gap 7, the unique maximum. The
+two carry the halves of the finding that neither shows alone: gap 0 shows that equal aggregate
+counts can hide substantial disagreement, and gap 7 shows that the strongest edge on the board still
+cannot reach the floor.
+
+**Why the rule and not just the names.** A named selection is unfalsifiable if the set changes. A
+rule reapplies mechanically under substitution, and it is checkable by a reader against the
+published file.
+
+**The general principle, since it recurs.** Presentation choices that select which cases a reader
+sees are analysis choices wearing different clothes, and belong in the pre-registration on the same
+terms. Experiments 2 and 3 should register their illustrative selections the same way rather than
+picking the most striking example once results exist.
