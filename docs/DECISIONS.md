@@ -225,3 +225,32 @@ first mean something.
 **Why this is worth the pedantry.** The claim this repo sells is that its numbers regenerate. A
 reproduction gate that passes because nothing varied on one machine, and fails for the first
 external person who runs it, is worse than no gate, because it was believed.
+
+---
+
+## D0.10 D0.9 item 1 was edited in place, which this file forbids
+
+**Date:** 2026-07-27
+**Status:** settled, procedural correction
+
+Commit `b429400` edited the text of D0.9 item 1 to soften an overclaim: the original wording implied
+that pinning `ubuntu-24.04` fixes the environment, when it fixes the image line while point releases
+continue to arrive inside the label. The correction was right. The method was wrong.
+
+The header of this file states that entries are never edited to change their meaning and that a
+superseded decision gets a new entry saying so. Editing D0.9 in place violated that rule, and the
+fact that git history preserves the change does not make the file itself honest to a reader who does
+not check the log.
+
+**What should have happened.** A new entry, D0.10, recording the correction and pointing at D0.9.
+
+**Resolution.** This entry is that acknowledgement. The edited D0.9 text stands rather than being
+reverted, because a second rewrite would compound the original error. Anyone auditing D0.9 should
+read it together with this entry and with `b429400`.
+
+**Rule reaffirmed.** Corrections to a settled entry are appended as new entries. This applies with
+more force to `experiments/*/PREREG.md`, where the same discipline is the entire credibility claim,
+and where the freeze is stricter: a pre-registration body is not amended at all, and corrections go
+under its Deviations heading with a UTC timestamp. See D1 and D2 in
+`experiments/swebench/PREREG.md`, which is how the correction of an error in a frozen document is
+supposed to look.
