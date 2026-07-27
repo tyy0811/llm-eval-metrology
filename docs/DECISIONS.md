@@ -347,3 +347,68 @@ should. Building and approving the reference first means the renderer and its sn
 independently approved artifact.
 
 Fixture files remain the one sanctioned home for illustrative numbers, and are labeled as such.
+
+---
+
+## D1.4 Ship a pipeline, not a database: fetch-and-derive is the design, not the fallback
+
+**Date:** 2026-07-27
+**Status:** settled by Jane
+**Supersedes:** D1.2, whose framing made fetch-only a contingency triggered by upstream silence
+
+D1.2 treated committing the derived table as the preferred outcome and fetch-only as the fallback if
+permission did not arrive. That had the dependency backwards. The licensing question exists only
+because the plan proposed committing a derived table. Remove that and the question dissolves.
+
+**Decision.** The repo distributes a **deterministic fetch-and-derive pipeline** plus committed
+checksums of what it must produce. It never redistributes upstream per-instance data.
+
+Committed:
+
+- the fetch and derive scripts, pinned to exact upstream revisions
+- digests of the upstream files consumed
+- expected checksums of the derived table
+- **de minimis aggregates**: per-entry resolve totals and discordance counts, enough for a reader to
+  sanity-check the headline without holding the table
+- our own computed results, which are not upstream content
+
+Not committed: the derived per-instance table itself, which is generated and untracked.
+
+**Why this is the right shape.** What ships is a program that reads public data, not a republication
+of someone else's database. That is the standard pattern for benchmark analysis, and it sidesteps
+both the missing upstream LICENSE and the EU sui generis database right without touching the
+analysis at all.
+
+**The cost, stated rather than hidden.** Reproduction now requires network access and continued
+upstream availability. If upstream changes, the checksum mismatch reports it loudly instead of
+letting a silently different table through. That trade is recorded in the README, because a
+reproduction story with a network dependency should not be discovered by the first person who tries
+it on a plane.
+
+**The generalized criterion.** The test for a data source is not "does it raise no licensing
+question", because nothing passes that. It is **"does it raise only licensing questions I can design
+around without compromising the analysis"**. Experiment 2 is the same shape and already passes:
+SummEval ships annotations without the source news articles, and the plan needs labels only.
+Experiment 1 passes under this pattern. A source would fail only if the analysis genuinely required
+redistributing protected content, and that is the moment to change sources, not to accept the risk.
+
+**The permission request is still filed**, but it is now a nice-to-have rather than a gate. Nothing
+blocks T3.1 on a reply.
+
+---
+
+## D1.5 `docs/PROVENANCE.md` is a standing register, not a one-off note
+
+**Date:** 2026-07-27
+**Status:** settled by Jane
+
+Every external source gets a row recording license status, what is redistributed versus fetched,
+attribution, and any open question with its date and channel.
+
+**Why it belongs in this repo specifically.** For a project whose product claim is measurement
+provenance, the register converts a liability into a demonstration of the discipline being sold. It
+is also directly reusable as evidence in a conformity engagement, which is where the certificate and
+detectors are meant to land later.
+
+It costs about a page per experiment and is updated in the recon phase, when the facts are fresh,
+rather than reconstructed at publication time.

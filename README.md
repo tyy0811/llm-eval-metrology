@@ -61,6 +61,14 @@ make reproduce      regenerate result files from committed inputs
 
 `make reproduce` fails loudly until an experiment produces results.
 
+**Reproduction requires network access.** This repo ships a fetch-and-derive pipeline plus committed
+checksums of what it must produce. It does not redistribute upstream per-instance data, so `make
+reproduce` fetches from the pinned upstream revisions and rebuilds. Two consequences worth knowing
+before you try it: it does not work offline, and it depends on the upstream sources staying
+available. In exchange, if upstream changes, the checksum mismatch says so loudly instead of letting
+a quietly different table through. What each source contributes, and what is fetched rather than
+redistributed, is recorded in `docs/PROVENANCE.md`.
+
 Reproduction is defined against a canonical environment, not against any developer's machine:
 the `ubuntu-24.04` runner, Python 3.11.15, and the exact pins in `requirements.txt`, with the
 checksums generated in CI treated as canonical. See `docs/DECISIONS.md` D0.9. A local run on

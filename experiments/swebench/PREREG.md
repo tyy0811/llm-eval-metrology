@@ -284,3 +284,37 @@ pre-registration, happened
 That is what the git history actually evidences. The same narrower wording replaces "before any
 data was fetched" wherever this experiment's provenance is described, including in the status line
 of this document and in any findings block generated later.
+
+### D4, 2026-07-27T13:13:53Z, a limitation section 9 does not register
+
+**Reason.** Section 9 registers the board's changing population as a limitation but says nothing
+about whether results from different submissions are **evaluated comparably**. That is the most
+obvious rebuttal to the whole analysis, and it was missed. The body is frozen, so it is recorded
+here.
+
+**The limitation.** A paired comparison assumes both systems were measured by the same instrument.
+For this board that assumption is unverifiable from the artifacts:
+
+- No submission records the evaluation harness version it ran under. Checked directly: `metadata.yaml`
+  carries authors, model, org, logo, report, site, and S3 asset paths, and no version, image, or
+  environment field. A tree-wide search for a harness version file returns nothing.
+- The analyzed entries span roughly two years of submission dates.
+- Upstream has itself documented that harness behavior changed: SWE-bench ships a note on an
+  evaluation bug fixed in April 2024, and a validation re-run performed that month to check that
+  task instance behavior still reproduced.
+
+So `hidden-tests` is treated as one instrument across all systems, when it is more accurately a
+family of harness versions that cannot be distinguished from the published artifacts.
+
+**Effect on this experiment.** None on the primary, which D1 established is analytically forced and
+therefore cannot be rescued or overturned by any comparability argument. It does bear on the
+discordance counts, the paired intervals, and the MDE, since harness drift would inflate apparent
+discordance between systems submitted far apart in time.
+
+**Required.** This limitation appears in the findings block, the verdict cards' provenance seal, and
+any public write-up, stated as an unresolved threat to comparability rather than a caveat in
+passing. The question has been put to the upstream maintainers (`docs/PROVENANCE.md`, open question
+O2); any answer is appended here as a further deviation.
+
+**Not registered as an analysis change.** No test, threshold, or estimand changes. This entry adds a
+disclosure obligation only.
