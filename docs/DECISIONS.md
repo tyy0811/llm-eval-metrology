@@ -842,3 +842,60 @@ distinction one document later, not failing to notice it in the first place.
 correctly the whole time. It was in the reasoning about which case would occur, and it survived
 being written into a commit message as a justification. A wrong rationale attached to correct
 code is harder to catch than a bug, because the tests still pass.
+
+---
+
+## D2.6 T2.5 corrections, and markdown rendering reassigned to T3.3
+
+**Date:** 2026-07-28
+**Status:** settled, except the open question recorded at the end
+
+Review of T2.5 found six defects. The registered Experiment 1 data masks the first two, because
+every gap sits below the floor and every rejection flag is false, so the reference HTML would have
+frozen wrong semantics that no Experiment 1 number would have contradicted.
+
+**Separable is not resolved.** `separable_count` returned the observed Holm rejection count.
+D1.9 distinguishes them: resolved means the observed test rejected, separable means rejection was
+reachable at all. Both are now reported, `separable_count` in the headline and `resolved_count`
+under `observed`.
+
+**Three thresholds were collapsed into one.** The verdict uses the family alpha, the ruler and the
+gap floor use the family's first critical value, and the MDE uses the uncorrected level registered
+in PREREG section 5. They are numerically different: at 43 disagreements the required edge is 15,
+21, and 21 at thresholds 0.05, 0.005, and 0.05/19, against floors of 6, 9, and 10. The MDE was
+being computed at `alpha / m`, which is a departure from the registration, and each threshold is
+now a separate field labelled on the card.
+
+The summary text accompanying the previous commit also quoted "21 against a floor of 6", combining
+an edge at 0.005 with a floor at 0.05. The tests were internally consistent; the prose was not.
+
+**Duplicate member names collapsed silently**, because the family built a dict keyed by name. Two
+members produced one rejection flag and one pair received another pair's verdict. Members now
+reach `holm` as ordered tuples so its duplicate guard fires.
+
+**The new dataclasses had no `__post_init__`**, violating D2.3 for the second time. All four now
+validate, including that a verdict agrees with the decision rule that produced it.
+
+**The family card omitted binding D1.9 fields** and `validate_card` accepted near-empty cards.
+Both fixed, with required-shape validation for pair and family cards before a renderer may draw.
+
+**Markdown rendering is reassigned from T2.5 to T3.3.** Its consumer is the findings block, which
+needs a results file that does not exist until Phase 3. Recording the move rather than calling
+T2.5 complete with a silently dropped deliverable.
+
+### Open question, blocking T2.6
+
+Separability is measured against `alpha / m`, the bar the family's **first** rejection must clear.
+Holm then loosens, so once one pair opens the family a second can be rejected with a gap below
+that floor, and `resolved_count` can exceed `separable_count`. On a card that reads as a
+contradiction.
+
+The registered case is unaffected: when no gap reaches the floor, Holm rejects nothing, so both
+counts are zero and the D1.9 example holds exactly. A test pins that. A second test pins the
+divergent case as a known behaviour rather than asserting it is desirable.
+
+Three candidate resolutions, needing a ruling before the reference HTML fixes the semantics:
+report separability at `alpha / m` and accept that resolved can exceed it; report it at `alpha`,
+the loosest bar any member could face, which restores `resolved <= separable` but changes the
+registered floor from 10 to 6; or define it per member at the bar that member actually faced in
+the step-down.

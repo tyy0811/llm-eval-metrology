@@ -335,10 +335,11 @@ class TestFamilyAndPairCardsAgree:
         verdicts = [m.verdict == VERDICT_RESOLVED for m in result.members]
         assert verdicts == list(result.rejected)
 
-    def test_separable_count_equals_the_number_of_resolved_cards(self) -> None:
+    def test_resolved_count_equals_the_number_of_resolved_cards(self) -> None:
+        """Resolved, not separable. The earlier form of this test encoded the conflation."""
         result = self.disagreeing_family()
 
-        assert result.separable_count == sum(m.verdict == VERDICT_RESOLVED for m in result.members)
+        assert result.resolved_count == sum(m.verdict == VERDICT_RESOLVED for m in result.members)
 
     def test_adjusted_p_value_is_recorded_for_family_members(self) -> None:
         result = self.disagreeing_family()
@@ -358,3 +359,268 @@ class TestFamilyAndPairCardsAgree:
     def test_a_standalone_report_has_no_adjusted_p_value(self) -> None:
         """Outside a family there is nothing to correct against."""
         assert report(n01=1, n10=2).adjusted_p_value is None
+
+
+class TestSeparableIsNotResolved:
+    """D1.9 keeps these distinct, and the registered result masks the difference.
+
+    Resolved: the observed Holm test rejected. Separable: rejection was reachable under some
+    feasible discordance configuration, which for a gap `g` means `g` clears the family floor.
+    Every registered Experiment 1 pair fails both, so conflating them shows no symptom there.
+    """
+
+    def family_with_a_clearing_gap(self):
+        members = [counts(f"p{i}", n01=100, n10=100) for i in range(18)]
+        members.append(counts("wide", n01=100, n10=112))
+        return build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+    def test_a_gap_clearing_the_floor_is_separable(self) -> None:
+        result = self.family_with_a_clearing_gap()
+
+        assert result.largest_observed_gap == 12
+        assert result.largest_observed_gap >= result.best_case_gap_floor
+        assert result.separable_count == 1
+
+    def test_that_same_pair_is_not_resolved(self) -> None:
+        """Reachable in principle, not rejected in fact, because discordance is high."""
+        result = self.family_with_a_clearing_gap()
+
+        assert result.resolved_count == 0
+
+    def test_a_family_that_cannot_clear_its_floor_resolves_nothing(self) -> None:
+        """The property that actually holds, and the one the registered case relies on.
+
+        Holm cannot reject anything unless the smallest p-value clears `alpha / m`. So when no
+        gap reaches the floor, `resolved_count` is necessarily zero as well.
+        """
+        gaps = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+        members = [counts(f"pair_{i}", n01=15, n10=15 + g) for i, g in enumerate(gaps)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert result.largest_observed_gap < result.best_case_gap_floor
+        assert result.separable_count == 0
+        assert result.resolved_count == 0
+
+    def test_holm_can_resolve_a_pair_below_the_family_floor(self) -> None:
+        """Recorded as an open semantic question, not asserted as desirable.
+
+        Separability is measured against `alpha / m`, the bar the family's first rejection must
+        clear. Holm then loosens, so once one pair opens the family a second can be rejected
+        with a gap below that floor. `resolved_count` can therefore exceed `separable_count`,
+        which reads as a contradiction on a card and needs a ruling before T2.6.
+        """
+        members = [counts("wide", n01=0, n10=40), counts("six", n01=0, n10=6)]
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert result.best_case_gap_floor == 7
+        assert result.resolved_count == 2
+        assert result.separable_count == 1
+
+    def test_headline_reports_separability_and_observed_rejections_separately(self) -> None:
+        card = family_card_json(self.family_with_a_clearing_gap())
+        finding = card["family_finding"]
+
+        assert finding["headline"]["separable_count"] == 1
+        assert finding["observed"]["resolved_count"] == 0
+
+    def test_the_registered_case_still_reads_zero_on_both(self) -> None:
+        gaps = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+        members = [counts(f"pair_{i}", n01=15, n10=15 + g) for i, g in enumerate(gaps)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert (result.separable_count, result.resolved_count) == (0, 0)
+
+
+class TestThresholdsAreNotConflated:
+    """Three different thresholds govern three different numbers."""
+
+    def family(self):
+        members = [counts(f"p{i}", n01=18, n10=25) for i in range(19)]
+        return build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+    def test_mde_uses_the_registered_uncorrected_alpha(self) -> None:
+        """PREREG section 5 registers alpha 0.05 for the MDE, not the corrected threshold."""
+        member = self.family().members[0]
+
+        assert member.mde.alpha == 0.05
+
+    def test_the_decision_uses_the_family_alpha(self) -> None:
+        member = self.family().members[0]
+
+        assert member.alpha == 0.05
+        assert member.adjusted_p_value is not None
+
+    def test_the_ruler_uses_the_family_critical_value(self) -> None:
+        result = self.family()
+        member = result.members[0]
+
+        assert member.ruler_threshold == pytest.approx(result.first_critical)
+
+    def test_the_ruler_and_the_floor_share_one_threshold(self) -> None:
+        """`21 against a floor of 6` would combine incompatible thresholds."""
+        result = self.family()
+        member = result.members[0]
+
+        assert member.required_net_edge == 21
+        assert result.best_case_gap_floor == 10
+        assert member.ruler_threshold == pytest.approx(result.first_critical)
+
+    def test_each_threshold_is_labeled_on_the_card(self) -> None:
+        card = pair_card_json(self.family().members[0])
+
+        assert card["test"]["alpha"] == 0.05
+        assert card["ruler"]["threshold"] == pytest.approx(0.05 / 19)
+        assert card["mde"]["alpha"] == 0.05
+
+
+class TestDuplicateNamesAreRejected:
+    def test_duplicate_member_names_raise(self) -> None:
+        """The dict comprehension silently dropped one, giving a pair another pair's verdict."""
+        members = [counts("same", n01=0, n10=40), counts("same", n01=20, n10=20)]
+
+        with pytest.raises(ValueError, match="duplicate"):
+            build_family_report(
+                members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+            )
+
+    def test_members_and_flags_stay_aligned(self) -> None:
+        members = [counts(f"p{i}", n01=i, n10=i + 2) for i in range(5)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert len(result.members) == len(result.adjusted) == len(result.rejected) == 5
+
+
+class TestDataclassInvariants:
+    """D2.3, applied to the T2.5 dataclasses."""
+
+    def test_pair_counts_rejects_discordance_above_the_item_count(self) -> None:
+        with pytest.raises(ValueError, match="exceed"):
+            PairCounts(name="p", system_a="a", system_b="b", n01=300, n10=300, n_items=500)
+
+    def test_pair_counts_rejects_a_self_comparison(self) -> None:
+        with pytest.raises(ValueError, match="itself"):
+            PairCounts(name="p", system_a="a", system_b="a", n01=1, n10=2, n_items=500)
+
+    def test_pair_counts_rejects_a_blank_name(self) -> None:
+        with pytest.raises(ValueError, match="name"):
+            PairCounts(name="  ", system_a="a", system_b="b", n01=1, n10=2, n_items=500)
+
+    def test_provenance_rejects_a_blank_revision(self) -> None:
+        with pytest.raises(ValueError, match="pinned_revision"):
+            Provenance(source="s", pinned_revision="", fetch_date="2026-07-28")
+
+    def test_pair_report_rejects_an_unknown_verdict(self) -> None:
+        from metrology.reporting import PairReport
+
+        with pytest.raises(ValueError, match="verdict"):
+            PairReport(
+                name="p",
+                system_a="a",
+                system_b="b",
+                instrument="t",
+                n_items=500,
+                n01=1,
+                n10=2,
+                p_value=0.5,
+                threshold=0.05,
+                ruler_threshold=0.05,
+                verdict="MAYBE",
+                adjusted_p_value=None,
+                alpha=None,
+                discordance_rate=0.006,
+                required_net_edge=None,
+                mde=report(n01=1, n10=2).mde,
+                provenance=PROVENANCE,
+            )
+
+    def test_pair_report_rejects_a_verdict_contradicting_its_adjusted_p(self) -> None:
+        from metrology.reporting import PairReport
+
+        with pytest.raises(ValueError, match="verdict"):
+            PairReport(
+                name="p",
+                system_a="a",
+                system_b="b",
+                instrument="t",
+                n_items=500,
+                n01=1,
+                n10=2,
+                p_value=0.5,
+                threshold=0.05,
+                ruler_threshold=0.05,
+                verdict=VERDICT_RESOLVED,
+                adjusted_p_value=0.9,
+                alpha=0.05,
+                discordance_rate=0.006,
+                required_net_edge=None,
+                mde=report(n01=1, n10=2).mde,
+                provenance=PROVENANCE,
+            )
+
+
+class TestFamilyCardRequiredShape:
+    def card(self):
+        members = [counts(f"p{i}", n01=15, n10=15) for i in range(19)]
+        return family_card_json(
+            build_family_report(
+                members,
+                instrument="hidden-tests",
+                alpha=0.05,
+                provenance=PROVENANCE,
+                secondary_family_size=10,
+            )
+        )
+
+    def test_conditionality_is_stated(self) -> None:
+        assert self.card()["family_finding"]["conditionality"]
+
+    def test_disclosure_separates_headline_from_secondary(self) -> None:
+        disclosure = self.card()["family_finding"]["disclosure"]
+
+        assert disclosure["applies_to_headline"] == []
+        assert "D4 harness comparability" in disclosure["applies_to_secondary"]
+
+    def test_secondary_family_size_and_floor_are_disclosed(self) -> None:
+        block = self.card()["family_finding"]["progressive_disclosure"]
+
+        assert block["secondary_family_size"] == 10
+        assert block["secondary_family_floor"] == 9
+
+    def test_validate_card_rejects_a_family_card_missing_required_blocks(self) -> None:
+        from metrology.reporting import validate_card
+
+        card = self.card()
+        del card["family_finding"]["scope"]
+
+        with pytest.raises(ValueError, match="scope"):
+            validate_card(card)
+
+    def test_validate_card_rejects_a_pair_card_missing_required_blocks(self) -> None:
+        from metrology.reporting import validate_card
+
+        card = pair_card_json(report(n01=1, n10=2))
+        del card["ruler"]
+
+        with pytest.raises(ValueError, match="ruler"):
+            validate_card(card)
+
+    def test_validate_card_rejects_an_almost_empty_card(self) -> None:
+        from metrology.reporting import validate_card
+
+        with pytest.raises(ValueError):
+            validate_card({"card_kind": "family_summary", "family_finding": {"a": 1}})
