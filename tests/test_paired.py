@@ -7,6 +7,7 @@ excluded by name, because it halves the value and lowers every registered thresh
 
 from __future__ import annotations
 
+import inspect
 import math
 
 import numpy as np
@@ -457,21 +458,29 @@ class TestUnequalRunSets:
             )
         return rows
 
-    def test_unequal_run_sets_are_rejected_by_default(self) -> None:
-        """A measured twice against B measured once is an asymmetry nobody declared."""
+    def test_unequal_run_sets_are_rejected(self) -> None:
+        """Under one fixed instrument, a system missing runs is missing data, not a design.
+
+        Both sides of this comparison share the same instrument, so unequal run sets cannot
+        mean "measured by different methods at different intensities". In the planned consumer
+        (T6.11, repeated judge runs across systems under one judge) it means judge evaluations
+        are absent.
+        """
         table = LabelTable.from_rows(self.rows())
 
         with pytest.raises(SchemaError, match="run"):
             clustered_bootstrap_difference(table, "A", "B", instrument="j", seed=1)
 
-    def test_unequal_run_sets_are_allowed_when_declared(self) -> None:
-        table = LabelTable.from_rows(self.rows())
+    def test_no_escape_hatch_exists_without_a_consumer(self) -> None:
+        """docs/DECISIONS.md D2.4: no machinery before it has a consumer.
 
-        result = clustered_bootstrap_difference(
-            table, "A", "B", instrument="j", seed=1, allow_unequal_runs=True
-        )
+        An allow_unequal_runs flag was added under a rationale that could not hold, since one
+        instrument governs both sides. It is absent until Experiment 2 recon establishes a
+        genuine missing-run case, and this test is what stops it returning quietly.
+        """
+        parameters = inspect.signature(clustered_bootstrap_difference).parameters
 
-        assert result.estimate == pytest.approx(0.5)
+        assert "allow_unequal_runs" not in parameters
 
 
 class TestRngStreamLock:

@@ -225,7 +225,6 @@ def clustered_bootstrap_difference(
     seed: int,
     n_resamples: int = DEFAULT_RESAMPLES,
     level: float = DEFAULT_LEVEL,
-    allow_unequal_runs: bool = False,
 ) -> BootstrapResult:
     """Cluster bootstrap for repeated measurement, where the cluster is the item.
 
@@ -236,11 +235,11 @@ def clustered_bootstrap_difference(
 
     Items are weighted equally. An item measured five times does not outvote one measured once.
 
-    **Unequal run sets are rejected by default.** If system A was measured on runs {0, 1} and
-    system B only on run {0}, their per-item means are averages over different numbers of
-    measurements, so the paired difference carries a per-item noise asymmetry that equal-weight
-    clustering does not model. In practice that pattern is usually missing data rather than a
-    design choice. Pass `allow_unequal_runs=True` to declare it deliberate.
+    **Unequal run sets are rejected.** Both systems are measured by the same `instrument` here,
+    so a system with fewer runs is missing evaluations rather than sampled differently by design.
+    Their per-item means would be averages over different numbers of measurements, giving the
+    paired difference a noise asymmetry that equal-weight clustering does not model. There is no
+    opt-out: see `docs/DECISIONS.md` D2.4 for why the earlier escape hatch was withdrawn.
     """
     _require_level(level)
     seed = _require_seed(seed)
@@ -275,19 +274,18 @@ def clustered_bootstrap_difference(
             f"neither {system_a!r} nor {system_b!r} was scored by instrument {instrument!r}"
         )
 
-    if not allow_unequal_runs:
-        mismatched = sorted(
-            item for item, sides in runs_seen.items() if sides.get(system_a) != sides.get(system_b)
+    mismatched = sorted(
+        item for item, sides in runs_seen.items() if sides.get(system_a) != sides.get(system_b)
+    )
+    if mismatched:
+        example = mismatched[0]
+        raise SchemaError(
+            f"items {mismatched[:3]} have different run sets for {system_a!r} and "
+            f"{system_b!r} under instrument {instrument!r}: "
+            f"{sorted(runs_seen[example].get(system_a, set()))} against "
+            f"{sorted(runs_seen[example].get(system_b, set()))}. "
+            "Both systems share this instrument, so the shortfall is missing evaluations"
         )
-        if mismatched:
-            example = mismatched[0]
-            raise SchemaError(
-                f"items {mismatched[:3]} have different run sets for {system_a!r} and "
-                f"{system_b!r} under instrument {instrument!r}: "
-                f"{sorted(runs_seen[example].get(system_a, set()))} against "
-                f"{sorted(runs_seen[example].get(system_b, set()))}. "
-                "Pass allow_unequal_runs=True to declare the asymmetry deliberate"
-            )
 
     items = sorted(per_item)
     differences = np.asarray(

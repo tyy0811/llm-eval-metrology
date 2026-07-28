@@ -761,3 +761,44 @@ finding, the exact failure this repo exists to prevent.
 **Every resampling entry point requires a seed.** `clustered_bootstrap_difference` accepted
 `seed=None`, and numpy then draws ambient entropy, which breaks the determinism gate in D0.5
 without any visible symptom.
+
+---
+
+## D2.4 D2.2's consumer rationale was structurally impossible; the escape hatch is withdrawn
+
+**Date:** 2026-07-28
+**Status:** settled
+**Supersedes:** the consumer rationale in D2.2. D2.2's text stands as written, per the append-only
+rule; this entry is the correction of record.
+
+D2.2 justified an `allow_unequal_runs=True` escape hatch by claiming Experiment 2 "genuinely
+measures a cheap instrument many times against an anchor measured once". That justification cannot
+hold, and the reason is structural rather than a misreading of the experiment.
+
+`clustered_bootstrap_difference(table, system_a, system_b, *, instrument, ...)` compares **two
+systems under one fixed instrument**. Both sides share the same `instrument` argument. A cheap
+judge and a human anchor are different *instruments*, not different systems, so this function
+cannot express that comparison at all. Confirmed against the signature rather than argued.
+
+**Consequence.** With that rationale removed, `allow_unequal_runs` had no declared consumer, which
+violates the rule in PLAN.md section 0 that no design element is built before it has one.
+
+**Decision.**
+
+1. Unequal run sets stay rejected, with no opt-out.
+2. The `allow_unequal_runs` parameter is removed.
+3. A missing-run policy is reintroduced only if Experiment 2 recon (T4.1) establishes a genuine
+   case, and it will be designed against that case rather than an imagined one.
+
+**What the real consumer looks like.** T6.11, self-consistency across k repeated judge runs, does
+compare systems under one judge. There, unequal run sets mean judge evaluations are **missing**,
+which is a data defect to surface rather than a design to accommodate. That strengthens the
+rejection instead of arguing for an exemption.
+
+**Guarded, not just deleted.** A test asserts the parameter is absent from the signature, so the
+hatch cannot reappear without someone deliberately removing the test and confronting this entry.
+
+**The general lesson, which is why this is worth an entry rather than a quiet revert.** The
+plausible-sounding consumer was never checked against the function's own shape. "No machinery
+before a consumer" is only enforceable if the claimed consumer is verified to be able to call the
+thing, so a named consumer now has to typecheck against the signature before it counts.
