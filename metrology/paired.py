@@ -81,19 +81,47 @@ class BootstrapResult:
         return self.n_units
 
 
+def _exact_nonnegative_int(value: object, name: str, *, minimum: int = 0) -> int:
+    """The one strict integer validator, shared by counts, gaps, and resample counts.
+
+    Rejects bools (a bool would read as gap 1 or count 1), fractional floats (which would
+    silently truncate), and non-finite values. `nan` matters most: it previously flowed through
+    `p_value_floor` to return 1.0, turning missing data into a valid-looking "not separable".
+    """
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be an integer, not a bool, got {value!r}")
+    if isinstance(value, (int, np.integer)):
+        result = int(value)
+    elif isinstance(value, (float, np.floating)):
+        if not math.isfinite(float(value)):
+            raise ValueError(f"{name} must be finite, got {value!r}")
+        if not float(value).is_integer():
+            raise ValueError(f"{name} must be an exact integer, got {value!r}")
+        result = int(value)
+    else:
+        raise TypeError(f"{name} must be an integer, got {value!r}")
+    if result < minimum:
+        if minimum == 0:
+            raise ValueError(f"{name} must not be negative, got {value!r}")
+        raise ValueError(f"{name} must be at least {minimum}, got {value!r}")
+    return result
+
+
+def _require_seed(seed: object) -> int:
+    """Every resampling entry point takes a seed. Ambient entropy breaks the determinism gate."""
+    if seed is None:
+        raise ValueError("seed is required; unseeded resampling is not reproducible")
+    return _exact_nonnegative_int(seed, "seed")
+
+
 def mcnemar_exact_from_counts(*, n01: int, n10: int) -> McNemarResult:
     """Exact two-sided McNemar p-value from discordant counts alone.
 
     Computed with exact integer arithmetic rather than a floating-point survival function, so
     that the registered identity `p == 2^(1 - g)` at `n01 = 0` holds to the last bit.
     """
-    for name, value in (("n01", n01), ("n10", n10)):
-        if int(value) != value:
-            raise ValueError(f"{name} must be an integer, got {value!r}")
-        if value < 0:
-            raise ValueError(f"{name} must not be negative, got {value!r}")
-
-    n01, n10 = int(n01), int(n10)
+    n01 = _exact_nonnegative_int(n01, "n01")
+    n10 = _exact_nonnegative_int(n10, "n10")
     total = n01 + n10
     smaller = min(n01, n10)
     tail = sum(math.comb(total, i) for i in range(smaller + 1))
@@ -134,8 +162,7 @@ def p_value_floor(gap: int) -> float:
     Feasible discordance totals share the parity of `gap`, and p rises as the total grows, so
     this is a floor over every configuration consistent with the gap.
     """
-    if gap < 0:
-        raise ValueError(f"gap must not be negative, got {gap!r}")
+    gap = _exact_nonnegative_int(gap, "gap")
     return min(1.0, 2.0 ** (1 - gap))
 
 
@@ -147,6 +174,7 @@ def minimum_gap_for_threshold(threshold: float, *, max_gap: int = 4096) -> int:
     """
     if not 0 < threshold <= 1:
         raise ValueError(f"threshold must be in (0, 1], got {threshold!r}")
+    max_gap = _exact_nonnegative_int(max_gap, "max_gap", minimum=1)
     for gap in range(max_gap + 1):
         if p_value_floor(gap) <= threshold:
             return gap
@@ -167,8 +195,7 @@ def paired_bootstrap_difference(
     destroy the pairing that the paired design exists to exploit.
     """
     _require_level(level)
-    if seed is None:
-        raise ValueError("seed is required; unseeded resampling is not reproducible")
+    seed = _require_seed(seed)
 
     differences = pair.label_a - pair.label_b
     estimate = float(differences.mean())
@@ -198,6 +225,7 @@ def clustered_bootstrap_difference(
     seed: int,
     n_resamples: int = DEFAULT_RESAMPLES,
     level: float = DEFAULT_LEVEL,
+    allow_unequal_runs: bool = False,
 ) -> BootstrapResult:
     """Cluster bootstrap for repeated measurement, where the cluster is the item.
 
@@ -207,19 +235,32 @@ def clustered_bootstrap_difference(
     the correlation between an item's repeated measurements is preserved.
 
     Items are weighted equally. An item measured five times does not outvote one measured once.
+
+    **Unequal run sets are rejected by default.** If system A was measured on runs {0, 1} and
+    system B only on run {0}, their per-item means are averages over different numbers of
+    measurements, so the paired difference carries a per-item noise asymmetry that equal-weight
+    clustering does not model. In practice that pattern is usually missing data rather than a
+    design choice. Pass `allow_unequal_runs=True` to declare it deliberate.
     """
     _require_level(level)
+    seed = _require_seed(seed)
     if system_a == system_b:
         raise SchemaError(f"cannot pair system {system_a!r} with itself")
 
     scoped = table.subset(instrument=instrument)
     per_item: dict[str, dict[str, list[float]]] = {}
-    for item, system, label in zip(
-        scoped.item_id.tolist(), scoped.system.tolist(), scoped.label.tolist(), strict=True
+    runs_seen: dict[str, dict[str, set[int]]] = {}
+    for item, system, run, label in zip(
+        scoped.item_id.tolist(),
+        scoped.system.tolist(),
+        scoped.run.tolist(),
+        scoped.label.tolist(),
+        strict=True,
     ):
         if system not in (system_a, system_b):
             continue
         per_item.setdefault(item, {}).setdefault(system, []).append(label)
+        runs_seen.setdefault(item, {}).setdefault(system, set()).add(int(run))
 
     incomplete = sorted(
         item for item, sides in per_item.items() if system_a not in sides or system_b not in sides
@@ -233,6 +274,20 @@ def clustered_bootstrap_difference(
         raise SchemaError(
             f"neither {system_a!r} nor {system_b!r} was scored by instrument {instrument!r}"
         )
+
+    if not allow_unequal_runs:
+        mismatched = sorted(
+            item for item, sides in runs_seen.items() if sides.get(system_a) != sides.get(system_b)
+        )
+        if mismatched:
+            example = mismatched[0]
+            raise SchemaError(
+                f"items {mismatched[:3]} have different run sets for {system_a!r} and "
+                f"{system_b!r} under instrument {instrument!r}: "
+                f"{sorted(runs_seen[example].get(system_a, set()))} against "
+                f"{sorted(runs_seen[example].get(system_b, set()))}. "
+                "Pass allow_unequal_runs=True to declare the asymmetry deliberate"
+            )
 
     items = sorted(per_item)
     differences = np.asarray(
@@ -261,8 +316,7 @@ def clustered_bootstrap_difference(
 
 
 def _bootstrap_means(values: np.ndarray, *, seed: int, n_resamples: int) -> np.ndarray:
-    if n_resamples < 1:
-        raise ValueError(f"n_resamples must be positive, got {n_resamples!r}")
+    n_resamples = _exact_nonnegative_int(n_resamples, "n_resamples", minimum=1)
     rng = np.random.default_rng(seed)
     n = values.shape[0]
     indices = rng.integers(0, n, size=(n_resamples, n))

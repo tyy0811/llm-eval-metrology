@@ -22,7 +22,7 @@ from metrology.paired import (
     p_value_floor,
     paired_bootstrap_difference,
 )
-from metrology.schema import LabelTable, SchemaError
+from metrology.schema import LabelTable, PairedLabels, SchemaError
 
 
 def pair_from(labels_a, labels_b):
@@ -303,14 +303,17 @@ class TestClusteredBootstrap:
             clustered_bootstrap_difference(table, "A", "B", instrument="judge", seed=1)
 
 
-class TestDeterminismLock:
+class TestOutputRegression:
     def test_bootstrap_bounds_are_stable_values(self) -> None:
-        """Golden values, recorded from a run rather than derived.
+        """An output regression fixture, which is weaker than it first appears.
 
-        The point is not that these numbers are correct in some independent sense, it is that
-        they must not change. `make reproduce` promises byte-identical results, so a numpy RNG
-        stream change, a dependency bump, or an accidental switch of resampling unit has to
-        fail here rather than silently shifting every published interval.
+        Golden values recorded from a run, not derived. They are not independently correct;
+        they must simply not change. This catches a switched resampling unit, a changed
+        percentile rule, or a reworked estimator.
+
+        It is **not** an RNG stream lock. Percentile bounds are coarse, so a different stream
+        can easily produce the same quantiles and pass this test. `TestRngStreamLock` asserts
+        the raw draws and is the check that actually pins the stream.
 
         Recorded 2026-07-28 under the pinned environment in `requirements.txt`. Changing these
         values is a determinism event and requires a DECISIONS entry, per D0.5.
@@ -323,3 +326,162 @@ class TestDeterminismLock:
         assert np.isclose(result.estimate, 0.2)
         assert result.low == pytest.approx(-0.2, abs=1e-12)
         assert result.high == pytest.approx(0.6, abs=1e-12)
+
+
+class TestSeedIsAlwaysRequired:
+    """An unseeded resample draws ambient entropy and silently breaks the determinism gate."""
+
+    def rows(self) -> list[dict]:
+        rows = []
+        for index in range(4):
+            rows.append({"item_id": f"i{index}", "system": "A", "instrument": "j", "label": 1})
+            rows.append({"item_id": f"i{index}", "system": "B", "instrument": "j", "label": 0})
+        return rows
+
+    def test_clustered_bootstrap_rejects_a_missing_seed(self) -> None:
+        table = LabelTable.from_rows(self.rows())
+
+        with pytest.raises(ValueError, match="seed"):
+            clustered_bootstrap_difference(table, "A", "B", instrument="j", seed=None)
+
+    def test_paired_bootstrap_rejects_a_missing_seed(self) -> None:
+        with pytest.raises(ValueError, match="seed"):
+            paired_bootstrap_difference(pair_from([1, 0], [0, 1]), seed=None)
+
+
+class TestPairedLabelsInvariant:
+    def build(self, **overrides):
+        fields = {
+            "item_id": np.asarray(["i1", "i2"]),
+            "label_a": np.asarray([1.0, 0.0]),
+            "label_b": np.asarray([0.0, 1.0]),
+            "system_a": "A",
+            "system_b": "B",
+            "instrument": "t",
+        }
+        fields.update(overrides)
+        return PairedLabels(**fields)
+
+    def test_unequal_label_lengths_are_rejected(self) -> None:
+        """Broadcasting would silently produce a plausible wrong discordance count."""
+        with pytest.raises(SchemaError, match="length"):
+            self.build(label_b=np.asarray([0.0]))
+
+    def test_item_id_length_must_match_the_labels(self) -> None:
+        with pytest.raises(SchemaError, match="length"):
+            self.build(item_id=np.asarray(["i1"]))
+
+    def test_duplicate_items_are_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="duplicate"):
+            self.build(item_id=np.asarray(["i1", "i1"]))
+
+    def test_non_finite_labels_are_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="finite"):
+            self.build(label_a=np.asarray([1.0, float("nan")]))
+
+    def test_a_system_paired_with_itself_is_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="itself"):
+            self.build(system_b="A")
+
+    def test_two_dimensional_arrays_are_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="one-dimensional"):
+            self.build(label_a=np.asarray([[1.0], [0.0]]))
+
+    def test_empty_pair_is_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="no items"):
+            self.build(
+                item_id=np.asarray([], dtype="<U2"),
+                label_a=np.asarray([]),
+                label_b=np.asarray([]),
+            )
+
+    def test_labels_are_read_only(self) -> None:
+        pair = self.build()
+
+        with pytest.raises(ValueError, match="read-only"):
+            pair.label_a[0] = 99.0
+
+    def test_source_arrays_are_copied(self) -> None:
+        source = np.asarray([1.0, 0.0])
+        pair = self.build(label_a=source)
+
+        source[0] = 99.0
+
+        assert pair.label_a.tolist() == [1.0, 0.0]
+
+    def test_a_valid_pair_still_builds(self) -> None:
+        assert self.build().n_items == 2
+
+
+class TestStrictIntegerValidation:
+    @pytest.mark.parametrize("gap", [6.5, float("nan"), float("inf"), True, "3", None])
+    def test_p_value_floor_requires_an_exact_integer(self, gap) -> None:
+        """nan previously returned 1.0, turning missing data into a not-separable conclusion."""
+        with pytest.raises((ValueError, TypeError)):
+            p_value_floor(gap)
+
+    def test_integral_float_gap_is_accepted(self) -> None:
+        assert p_value_floor(7.0) == pytest.approx(0.015625)
+
+    @pytest.mark.parametrize("count", [True, 2.5, float("nan"), "2"])
+    def test_counts_require_exact_integers(self, count) -> None:
+        with pytest.raises((ValueError, TypeError)):
+            mcnemar_exact_from_counts(n01=count, n10=3)
+
+    def test_max_gap_requires_an_exact_integer(self) -> None:
+        with pytest.raises((ValueError, TypeError)):
+            minimum_gap_for_threshold(0.05, max_gap=10.5)
+
+    @pytest.mark.parametrize("n_resamples", [10.5, True, 0, -1])
+    def test_resample_count_requires_a_positive_exact_integer(self, n_resamples) -> None:
+        with pytest.raises((ValueError, TypeError)):
+            paired_bootstrap_difference(pair_from([1, 0], [0, 1]), seed=1, n_resamples=n_resamples)
+
+
+class TestUnequalRunSets:
+    def rows(self) -> list[dict]:
+        rows = []
+        for index in range(4):
+            for run in (0, 1):
+                rows.append(
+                    {
+                        "item_id": f"i{index}",
+                        "system": "A",
+                        "run": run,
+                        "instrument": "j",
+                        "label": 1 if run == 0 else 0,
+                    }
+                )
+            rows.append(
+                {"item_id": f"i{index}", "system": "B", "run": 0, "instrument": "j", "label": 0}
+            )
+        return rows
+
+    def test_unequal_run_sets_are_rejected_by_default(self) -> None:
+        """A measured twice against B measured once is an asymmetry nobody declared."""
+        table = LabelTable.from_rows(self.rows())
+
+        with pytest.raises(SchemaError, match="run"):
+            clustered_bootstrap_difference(table, "A", "B", instrument="j", seed=1)
+
+    def test_unequal_run_sets_are_allowed_when_declared(self) -> None:
+        table = LabelTable.from_rows(self.rows())
+
+        result = clustered_bootstrap_difference(
+            table, "A", "B", instrument="j", seed=1, allow_unequal_runs=True
+        )
+
+        assert result.estimate == pytest.approx(0.5)
+
+
+class TestRngStreamLock:
+    def test_numpy_generator_stream_is_pinned(self) -> None:
+        """A true stream lock, unlike the output fixture below.
+
+        Quantile bounds can survive a stream change, so they do not prove the stream is stable.
+        This asserts the raw draws. Recorded under numpy 1.26.4; a change here means the
+        resampling stream moved and every published interval must be regenerated (D0.5).
+        """
+        draws = np.random.default_rng(20260727).integers(0, 10, size=8).tolist()
+
+        assert draws == [9, 1, 2, 9, 4, 8, 9, 4]

@@ -62,6 +62,42 @@ class PairedLabels:
     system_b: str
     instrument: str
 
+    def __post_init__(self) -> None:
+        """Enforce the invariant here, not at the call sites that consume it.
+
+        `LabelTable.paired` is not the only way to build one. Without this, arrays of unequal
+        length broadcast inside a downstream test and produce a plausible wrong discordance
+        count rather than an error, which is the worst possible failure mode for this repo.
+        """
+        if self.system_a == self.system_b:
+            raise SchemaError(
+                f"cannot pair system {self.system_a!r} with itself; the difference is zero "
+                "by construction"
+            )
+
+        for name in ("item_id", "label_a", "label_b"):
+            values = np.array(getattr(self, name), copy=True)
+            if values.ndim != 1:
+                raise SchemaError(f"{name} must be one-dimensional, got shape {values.shape}")
+            values.setflags(write=False)
+            object.__setattr__(self, name, values)
+
+        lengths = {name: getattr(self, name).shape[0] for name in ("item_id", "label_a", "label_b")}
+        if len(set(lengths.values())) != 1:
+            raise SchemaError(f"paired columns have mismatched length: {lengths}")
+        if self.item_id.shape[0] == 0:
+            raise SchemaError("paired comparison has no items")
+
+        items = self.item_id.tolist()
+        if len(set(items)) != len(items):
+            duplicates = sorted({item for item in items if items.count(item) > 1})
+            raise SchemaError(f"paired comparison has duplicate items: {duplicates[:3]}")
+
+        for name in ("label_a", "label_b"):
+            labels = getattr(self, name)
+            if not np.all(np.isfinite(labels)):
+                raise SchemaError(f"{name} contains a value that is not finite")
+
     @property
     def n_items(self) -> int:
         return int(self.item_id.shape[0])

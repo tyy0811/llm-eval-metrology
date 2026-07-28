@@ -708,3 +708,56 @@ rows span more than one run.
 with a message naming the interpreter and the fix. The engine uses `zip(strict=)` and the checker
 scripts use `sys.stdlib_module_names`, both 3.10 or newer, so an older interpreter otherwise fails
 somewhere unhelpful. Verified against the 3.9.4 interpreter present on the development machine.
+
+---
+
+## D2.2 Unequal run sets are rejected unless declared
+
+**Date:** 2026-07-28
+**Status:** settled
+
+`clustered_bootstrap_difference` weights items equally, each contributing the mean of its own
+runs. That leaves a case the first implementation accepted silently: system A measured on runs
+{0, 1} against system B measured only on run {0}.
+
+**Decision.** Reject by default. `allow_unequal_runs=True` declares the asymmetry deliberate.
+
+**Why not simply allow it.** The per-item means are then averages over different numbers of
+measurements, so the paired difference carries a per-item noise asymmetry that equal-weight
+clustering does not model. More practically, that pattern is almost always missing data rather
+than a design choice, and the failure is silent: the estimate looks fine and the interval is
+quietly too narrow on the side measured more often.
+
+**Why not simply forbid it.** A genuine design can measure a cheap instrument many times and an
+expensive anchor once. That is the Experiment 2 shape, so the capability has a real consumer and
+refusing outright would force a caller to pre-average and lose the clustering.
+
+This follows the pattern already set by `LabelTable.paired(run=...)`: refuse the ambiguous case,
+provide an explicit way to say what was meant.
+
+---
+
+## D2.3 Validation lives at the type boundary, and one validator owns integer inputs
+
+**Date:** 2026-07-28
+**Status:** settled
+
+Two review passes found the same shape of defect twice: a validated-looking object that was
+never validated, and a numeric input that silently coerced. The rules that follow:
+
+**Every dataclass carrying data enforces its invariant in `__post_init__`.** `LabelTable` got
+this in the T2.1 corrective pass; `PairedLabels` now has it too. Unequal label lengths were
+broadcasting inside `mcnemar_exact` and the bootstrap, producing a plausible wrong discordance
+count rather than an error. Arrays are copied and marked read-only, lengths must match, items
+must be unique, labels must be finite, and the two systems must differ.
+
+**One validator owns exact-integer inputs**, used for discordance counts, gaps, `max_gap`,
+`n_resamples`, and seeds. It rejects bools, fractional floats, and non-finite values.
+
+The `nan` case is why this matters more than it sounds. `p_value_floor(nan)` previously returned
+1.0, which reads as "not separable" and would have turned missing data into a confident negative
+finding, the exact failure this repo exists to prevent.
+
+**Every resampling entry point requires a seed.** `clustered_bootstrap_difference` accepted
+`seed=None`, and numpy then draws ambient entropy, which breaks the determinism gate in D0.5
+without any visible symptom.
