@@ -30,8 +30,13 @@ REQUIRED_COLUMNS: tuple[str, ...] = ("item_id", "system", "instrument", "label")
 #: same instrument is legal, and the same (item, system, run, instrument) twice is not.
 KEY_COLUMNS: tuple[str, ...] = ("item_id", "system", "run", "instrument")
 
-#: Columns that may be absent entirely, but not present on only some rows.
+#: Columns that may be absent, on some rows or on all of them. See `_optional_columns_present`
+#: for why partial presence is legal rather than an error.
 OPTIONAL_COLUMNS: tuple[str, ...] = ("cost", "category")
+
+#: Sentinel for an absent category. `cost` uses nan; category is a string column, so absence
+#: needs a value that a real category would never take.
+MISSING_CATEGORY: str = ""
 
 
 class SchemaError(ValueError):
@@ -73,6 +78,27 @@ class LabelTable:
     label: np.ndarray
     cost: np.ndarray | None = None
     category: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        """Enforce the validated-table invariant however the instance was built.
+
+        `from_rows` is not the only door: `_take` builds instances directly, and so can a
+        caller. Validation therefore lives here rather than in the constructor helper, so that
+        "this object exists" and "this object is valid" mean the same thing.
+
+        Arrays are copied and then marked read-only. `frozen=True` protects the attribute
+        binding only; without this a caller could rewrite a validated label to nan in place and
+        every downstream estimate would inherit it.
+        """
+        for name in ("item_id", "system", "run", "instrument", "label", "cost", "category"):
+            values = getattr(self, name)
+            if values is None:
+                continue
+            copied = np.array(values, copy=True)
+            copied.setflags(write=False)
+            object.__setattr__(self, name, copied)
+
+        _validate_columns(self)
 
     @property
     def n_rows(self) -> int:
@@ -136,12 +162,24 @@ class LabelTable:
             )
         return self.subset(instrument=anchor)
 
-    def paired(self, system_a: str, system_b: str, *, instrument: str) -> PairedLabels:
+    def paired(
+        self, system_a: str, system_b: str, *, instrument: str, run: int | None = None
+    ) -> PairedLabels:
         """Labels for two systems aligned on the items both were scored on.
 
-        Refuses to guess: an item missing from either system, or repeated runs that would need
-        averaging, raises rather than being silently dropped or collapsed.
+        Refuses to guess. A system compared with itself, a system never touched by the named
+        instrument, an item missing from one side, or an undeclared choice of run all raise
+        rather than producing a comparison the caller did not ask for.
+
+        `run` is optional only when the scoped rows carry exactly one run value. With repeated
+        measurement present the caller must declare which run to compare, or use the clustered
+        variant, because averaging runs would discard the clustering the data carries.
         """
+        if system_a == system_b:
+            raise SchemaError(
+                f"cannot pair system {system_a!r} with itself; the difference is zero by "
+                "construction and the comparison answers no question"
+            )
         for system in (system_a, system_b):
             if system not in self.systems:
                 available = ", ".join(repr(name) for name in self.systems)
@@ -153,18 +191,41 @@ class LabelTable:
             )
 
         scoped = self.subset(instrument=instrument)
+        pair_mask = np.isin(scoped.system, [system_a, system_b])
+        if not pair_mask.any():
+            raise SchemaError(
+                f"neither {system_a!r} nor {system_b!r} was scored by instrument "
+                f"{instrument!r}; that instrument scored {', '.join(map(repr, scoped.systems))}"
+            )
+        scoped = scoped._take(pair_mask)
+
+        for system in (system_a, system_b):
+            if system not in scoped.systems:
+                raise SchemaError(
+                    f"system {system!r} has no rows under instrument {instrument!r}, "
+                    "so there is nothing to pair against"
+                )
+
+        runs_present = sorted(set(scoped.run.tolist()))
+        if run is None:
+            if len(runs_present) > 1:
+                raise SchemaError(
+                    f"rows for {system_a!r} and {system_b!r} under instrument {instrument!r} "
+                    f"span runs {runs_present}; declare run= to choose one, or use the "
+                    "clustered variant, rather than averaging runs into a single comparison"
+                )
+        else:
+            if run not in runs_present:
+                raise SchemaError(
+                    f"run {run!r} is absent under instrument {instrument!r}; "
+                    f"runs present are {runs_present}"
+                )
+            scoped = scoped._take(scoped.run == run)
+
         by_system: dict[str, dict[str, float]] = {system_a: {}, system_b: {}}
         for item, system, label in zip(
             scoped.item_id.tolist(), scoped.system.tolist(), scoped.label.tolist(), strict=True
         ):
-            if system not in by_system:
-                continue
-            if item in by_system[system]:
-                raise SchemaError(
-                    f"item {item!r} has more than one run for system {system!r} under "
-                    f"instrument {instrument!r}; use the clustered variant rather than "
-                    "averaging runs into a single paired comparison"
-                )
             by_system[system][item] = label
 
         only_a = sorted(set(by_system[system_a]) - set(by_system[system_b]))
@@ -194,17 +255,19 @@ class LabelTable:
             raise SchemaError("label table has no rows")
 
         _check_required_columns(materialized)
-        optional_present = _check_optional_columns(materialized)
+        optional_present = _optional_columns_present(materialized)
 
-        item_id = [str(row["item_id"]) for row in materialized]
-        system = [str(row["system"]) for row in materialized]
-        instrument = [str(row["instrument"]) for row in materialized]
+        item_id = [
+            _as_key_field(row["item_id"], i, "item_id") for i, row in enumerate(materialized)
+        ]
+        system = [_as_key_field(row["system"], i, "system") for i, row in enumerate(materialized)]
+        instrument = [
+            _as_key_field(row["instrument"], i, "instrument") for i, row in enumerate(materialized)
+        ]
         run = [_as_run(row.get("run", 0), index) for index, row in enumerate(materialized)]
         label = [_as_label(row["label"], index) for index, row in enumerate(materialized)]
 
         keys = list(zip(item_id, system, run, instrument, strict=True))
-        _check_unique(keys)
-
         order = sorted(range(len(keys)), key=lambda index: keys[index])
 
         def ordered(values: Sequence, dtype=None) -> np.ndarray:
@@ -218,12 +281,15 @@ class LabelTable:
             instrument=ordered(instrument),
             label=ordered(label, dtype=np.float64),
             cost=(
-                ordered([float(row["cost"]) for row in materialized], dtype=np.float64)
+                ordered(
+                    [_optional_cost(row, index) for index, row in enumerate(materialized)],
+                    dtype=np.float64,
+                )
                 if "cost" in optional_present
                 else None
             ),
             category=(
-                ordered([str(row["category"]) for row in materialized])
+                ordered([str(row.get("category", MISSING_CATEGORY)) for row in materialized])
                 if "category" in optional_present
                 else None
             ),
@@ -339,30 +405,69 @@ def _check_required_columns(rows: Sequence[Mapping[str, object]]) -> None:
                 raise SchemaError(f"row {index} is missing required column '{column}'")
 
 
-def _check_optional_columns(rows: Sequence[Mapping[str, object]]) -> set[str]:
-    """Optional columns must be present on every row or on none, never on some."""
-    present: set[str] = set()
-    for column in OPTIONAL_COLUMNS:
-        count = sum(1 for row in rows if column in row)
-        if count == 0:
-            continue
-        if count != len(rows):
-            raise SchemaError(
-                f"optional column '{column}' is present on {count} of {len(rows)} rows; "
-                "supply it for every row or for none"
-            )
-        present.add(column)
-    return present
+def _optional_columns_present(rows: Sequence[Mapping[str, object]]) -> set[str]:
+    """Which optional columns appear on at least one row.
+
+    Partial presence is legal and expected: Experiment 2 puts a costed judge and an uncosted
+    human anchor in one table, so requiring every row to carry `cost` would force a caller to
+    invent values for rows where the concept does not apply. Absent cells become `nan` for
+    `cost` and `MISSING_CATEGORY` for `category`, both of which are distinguishable from a
+    real value.
+    """
+    return {column for column in OPTIONAL_COLUMNS if any(column in row for row in rows)}
+
+
+def _optional_cost(row: Mapping[str, object], index: int) -> float:
+    if "cost" not in row or row["cost"] is None:
+        return math.nan
+    try:
+        return float(row["cost"])  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise SchemaError(f"row {index} has a non-numeric cost {row['cost']!r}") from exc
+
+
+def _as_key_field(value: object, index: int, column: str) -> str:
+    """Identifiers must be real, not stringified absences.
+
+    `str(None)` is `"None"`, which looks like a perfectly good item id and would silently join
+    every missing identifier into one bucket.
+    """
+    if value is None:
+        raise SchemaError(f"row {index} has a null {column}")
+    if isinstance(value, bool):
+        raise SchemaError(f"row {index} has a boolean {column} {value!r}")
+    text = str(value)
+    if not text.strip():
+        raise SchemaError(f"row {index} has a blank {column}")
+    return text
 
 
 def _as_run(value: object, index: int) -> int:
-    try:
-        run = int(value)  # type: ignore[call-overload]
-    except (TypeError, ValueError) as exc:
-        raise SchemaError(f"row {index} has a non-integer run {value!r}") from exc
-    if run < 0:
-        raise SchemaError(f"row {index} has a negative run {run}")
-    return run
+    """Run indices are exact nonnegative integers.
+
+    `int()` would truncate 1.5 to 1 and coerce True to 1, either of which merges two distinct
+    runs into one and corrupts the uniqueness key without any error surfacing.
+    """
+    if isinstance(value, bool):
+        raise SchemaError(f"row {index} has a boolean run {value!r}; run must be an integer")
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError as exc:
+            raise SchemaError(f"row {index} has a non-integer run {value!r}") from exc
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise SchemaError(f"row {index} has a non-finite run {value!r}")
+        if not value.is_integer():
+            raise SchemaError(
+                f"row {index} has a fractional run {value!r}; run must be an exact integer"
+            )
+        value = int(value)
+    if not isinstance(value, int):
+        raise SchemaError(f"row {index} has a non-integer run {value!r}")
+    if value < 0:
+        raise SchemaError(f"row {index} has a negative run {value}")
+    return int(value)
 
 
 def _as_label(value: object, index: int) -> float:
@@ -386,3 +491,42 @@ def _check_unique(keys: Sequence[tuple]) -> None:
         raise SchemaError(
             f"duplicate rows for {len(duplicates)} key(s) on ({', '.join(KEY_COLUMNS)}): {shown}"
         )
+
+
+def _validate_columns(table: LabelTable) -> None:
+    """The structural invariant, checked however the table was constructed."""
+    lengths = {
+        name: getattr(table, name).shape[0]
+        for name in ("item_id", "system", "run", "instrument", "label")
+    }
+    for name in ("cost", "category"):
+        values = getattr(table, name)
+        if values is not None:
+            lengths[name] = values.shape[0]
+    if len(set(lengths.values())) != 1:
+        raise SchemaError(f"columns have mismatched length: {lengths}")
+
+    if table.n_rows == 0:
+        raise SchemaError("label table has no rows")
+
+    if not np.all(np.isfinite(table.label)):
+        offending = int(np.argmax(~np.isfinite(table.label)))
+        raise SchemaError(f"row {offending} has a nan or infinite label {table.label[offending]!r}")
+
+    for name in ("item_id", "system", "instrument"):
+        values = getattr(table, name).tolist()
+        blank = [index for index, text in enumerate(values) if not str(text).strip()]
+        if blank:
+            raise SchemaError(f"rows {blank[:3]} have a blank {name}")
+
+    _check_unique(
+        list(
+            zip(
+                table.item_id.tolist(),
+                table.system.tolist(),
+                table.run.tolist(),
+                table.instrument.tolist(),
+                strict=True,
+            )
+        )
+    )

@@ -1,11 +1,12 @@
 PYTHON ?= python3
 
 .DEFAULT_GOAL := help
-.PHONY: help install test lint fmt dash-check import-check check reproduce
+.PHONY: help install check-python test lint fmt dash-check import-check check reproduce
 
 help:
 	@echo "targets:"
 	@echo "  install       install pinned dependencies from requirements.txt"
+	@echo "  check-python  fail fast if \$$(PYTHON) is older than 3.11"
 	@echo "  test          run the test suite"
 	@echo "  lint          ruff lint and format check"
 	@echo "  fmt           apply ruff formatting"
@@ -13,14 +14,25 @@ help:
 	@echo "  import-check  metrology/ imports nothing beyond stdlib, numpy, scipy"
 	@echo "  check         test, lint, dash-check, import-check"
 	@echo "  reproduce     regenerate committed result files from committed inputs"
+	@echo ""
+	@echo "override the interpreter with: make check PYTHON=python3.11"
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
 
-test:
+# The engine needs 3.11. On an older interpreter the scripts fail somewhere unhelpful
+# (sys.stdlib_module_names is 3.10+, zip(strict=) is 3.10+), so say so here instead.
+check-python:
+	@$(PYTHON) -c 'import sys; \
+	    v = sys.version_info; \
+	    ok = v[:2] >= (3, 11); \
+	    msg = "make: %s is Python %d.%d.%d, but this repo needs 3.11 or newer.\n       Try: make <target> PYTHON=python3.11" % (sys.executable, v[0], v[1], v[2]); \
+	    sys.exit(0 if ok else msg)'
+
+test: check-python
 	$(PYTHON) -m pytest
 
-lint:
+lint: check-python
 	$(PYTHON) -m ruff check .
 	$(PYTHON) -m ruff format --check .
 
@@ -28,10 +40,10 @@ fmt:
 	$(PYTHON) -m ruff format .
 	$(PYTHON) -m ruff check --fix .
 
-dash-check:
+dash-check: check-python
 	$(PYTHON) scripts/check_dashes.py
 
-import-check:
+import-check: check-python
 	$(PYTHON) scripts/check_imports.py
 
 check: test lint dash-check import-check

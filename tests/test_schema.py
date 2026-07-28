@@ -7,6 +7,7 @@ malformed inputs that would otherwise produce a confident wrong number.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from metrology.schema import LabelTable, SchemaError, load_long_csv, wide_to_long
@@ -383,3 +384,190 @@ class TestLoadLongCsv:
 
         assert table_forward.item_id.tolist() == table_reversed.item_id.tolist()
         assert table_forward.label.tolist() == table_reversed.label.tolist()
+
+
+class TestPairingRefusesMisleadingComparisons:
+    def test_pairing_a_system_with_itself_is_rejected(self) -> None:
+        """A self-comparison is always zero by construction and never a real question."""
+        with pytest.raises(SchemaError, match="itself"):
+            LabelTable.from_rows(rows_paired()).paired("A", "A", instrument="hidden-tests")
+
+    def test_systems_absent_from_the_named_instrument_are_rejected(self) -> None:
+        """Both systems exist, but neither was scored by this instrument."""
+        rows = rows_paired() + [
+            {"item_id": "i1", "system": "C", "instrument": "judge", "label": 1},
+            {"item_id": "i1", "system": "D", "instrument": "judge", "label": 1},
+        ]
+        table = LabelTable.from_rows(rows)
+
+        with pytest.raises(SchemaError, match="hidden-tests"):
+            table.paired("C", "D", instrument="hidden-tests")
+
+    def test_systems_measured_on_different_runs_do_not_silently_pair(self) -> None:
+        """A run 0 against B run 1 is a cross-run comparison nobody declared."""
+        rows = [
+            {"item_id": "i1", "system": "A", "run": 0, "instrument": "t", "label": 1},
+            {"item_id": "i1", "system": "B", "run": 1, "instrument": "t", "label": 0},
+        ]
+        table = LabelTable.from_rows(rows)
+
+        with pytest.raises(SchemaError, match="run"):
+            table.paired("A", "B", instrument="t")
+
+    def test_an_explicit_run_selects_one_measurement(self) -> None:
+        rows = [
+            {"item_id": "i1", "system": "A", "run": 0, "instrument": "t", "label": 1},
+            {"item_id": "i1", "system": "A", "run": 1, "instrument": "t", "label": 0},
+            {"item_id": "i1", "system": "B", "run": 0, "instrument": "t", "label": 0},
+            {"item_id": "i1", "system": "B", "run": 1, "instrument": "t", "label": 1},
+        ]
+
+        pair = LabelTable.from_rows(rows).paired("A", "B", instrument="t", run=1)
+
+        assert pair.label_a.tolist() == [0.0]
+        assert pair.label_b.tolist() == [1.0]
+
+
+class TestRunIsAnExactInteger:
+    def test_fractional_run_is_rejected_rather_than_truncated(self) -> None:
+        """int(1.5) is 1, which would silently merge two distinct runs."""
+        with pytest.raises(SchemaError, match="run"):
+            LabelTable.from_rows(
+                [{"item_id": "i1", "system": "A", "run": 1.5, "instrument": "t", "label": 1}]
+            )
+
+    def test_boolean_run_is_rejected(self) -> None:
+        """bool is an int subclass, so True would quietly become run 1."""
+        with pytest.raises(SchemaError, match="run"):
+            LabelTable.from_rows(
+                [{"item_id": "i1", "system": "A", "run": True, "instrument": "t", "label": 1}]
+            )
+
+    def test_nan_run_is_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="run"):
+            LabelTable.from_rows(
+                [
+                    {
+                        "item_id": "i1",
+                        "system": "A",
+                        "run": float("nan"),
+                        "instrument": "t",
+                        "label": 1,
+                    }
+                ]
+            )
+
+    def test_integral_float_is_accepted(self) -> None:
+        """CSV parsing yields floats, so 2.0 is a legitimate way to say run 2."""
+        table = LabelTable.from_rows(
+            [{"item_id": "i1", "system": "A", "run": 2.0, "instrument": "t", "label": 1}]
+        )
+
+        assert table.run.tolist() == [2]
+
+
+class TestKeyFieldsAreRealIdentifiers:
+    def test_none_item_id_is_rejected_not_stringified(self) -> None:
+        """str(None) is 'None', a plausible-looking identifier for a missing one."""
+        with pytest.raises(SchemaError, match="item_id"):
+            LabelTable.from_rows([{"item_id": None, "system": "A", "instrument": "t", "label": 1}])
+
+    def test_blank_system_is_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="system"):
+            LabelTable.from_rows([{"item_id": "i1", "system": "", "instrument": "t", "label": 1}])
+
+    def test_whitespace_instrument_is_rejected(self) -> None:
+        with pytest.raises(SchemaError, match="instrument"):
+            LabelTable.from_rows(
+                [{"item_id": "i1", "system": "A", "instrument": "   ", "label": 1}]
+            )
+
+
+class TestValidatedTableIsImmutable:
+    def test_labels_cannot_be_mutated_after_validation(self) -> None:
+        """frozen=True protects the attribute binding, not the array contents."""
+        table = LabelTable.from_rows(rows_minimal())
+
+        with pytest.raises(ValueError, match="read-only"):
+            table.label[0] = float("nan")
+
+    def test_identifiers_cannot_be_mutated_after_validation(self) -> None:
+        table = LabelTable.from_rows(rows_minimal())
+
+        with pytest.raises(ValueError, match="read-only"):
+            table.item_id[0] = "tampered"
+
+    def test_mutating_the_source_array_does_not_change_the_table(self) -> None:
+        source = np.asarray([1.0, 0.0])
+        table = LabelTable(
+            item_id=np.asarray(["i1", "i2"]),
+            system=np.asarray(["A", "A"]),
+            run=np.asarray([0, 0]),
+            instrument=np.asarray(["t", "t"]),
+            label=source,
+        )
+
+        source[0] = 99.0
+
+        assert table.label.tolist() == [1.0, 0.0]
+
+    def test_direct_construction_validates_column_lengths(self) -> None:
+        with pytest.raises(SchemaError, match="length"):
+            LabelTable(
+                item_id=np.asarray(["i1", "i2"]),
+                system=np.asarray(["A"]),
+                run=np.asarray([0]),
+                instrument=np.asarray(["t"]),
+                label=np.asarray([1.0]),
+            )
+
+    def test_direct_construction_rejects_a_nan_label(self) -> None:
+        with pytest.raises(SchemaError, match="nan"):
+            LabelTable(
+                item_id=np.asarray(["i1"]),
+                system=np.asarray(["A"]),
+                run=np.asarray([0]),
+                instrument=np.asarray(["t"]),
+                label=np.asarray([float("nan")]),
+            )
+
+    def test_direct_construction_rejects_duplicate_keys(self) -> None:
+        with pytest.raises(SchemaError, match="duplicate"):
+            LabelTable(
+                item_id=np.asarray(["i1", "i1"]),
+                system=np.asarray(["A", "A"]),
+                run=np.asarray([0, 0]),
+                instrument=np.asarray(["t", "t"]),
+                label=np.asarray([1.0, 0.0]),
+            )
+
+
+class TestOptionalColumnsMayBePartial:
+    def test_cost_present_on_some_rows_is_allowed(self) -> None:
+        """Experiment 2 mixes a costed judge with uncosted human rows in one table."""
+        table = LabelTable.from_rows(
+            [
+                {"item_id": "i1", "system": "A", "instrument": "human", "label": 1},
+                {"item_id": "i1", "system": "A", "instrument": "judge", "label": 1, "cost": 0.02},
+            ]
+        )
+
+        costs = table.cost.tolist()
+        assert costs[1] == 0.02
+        assert costs[0] != costs[0], "missing cost is nan, not zero"
+
+    def test_category_present_on_some_rows_is_allowed(self) -> None:
+        table = LabelTable.from_rows(
+            [
+                {"item_id": "i1", "system": "A", "instrument": "human", "label": 1},
+                {
+                    "item_id": "i2",
+                    "system": "A",
+                    "instrument": "human",
+                    "label": 1,
+                    "category": "django",
+                },
+            ]
+        )
+
+        assert table.category.tolist() == ["", "django"]

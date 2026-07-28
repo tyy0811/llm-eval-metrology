@@ -95,3 +95,27 @@ def test_reproduce_fails_loudly_while_there_is_nothing_to_reproduce() -> None:
 
     assert result.returncode != 0, "make reproduce must not pass as a silent no-op"
     assert "nothing to reproduce" in result.stdout.lower()
+
+
+class TestPythonVersionGuard:
+    """The engine uses 3.11 syntax and stdlib APIs, so an older interpreter must fail clearly.
+
+    `zip(strict=)` needs 3.10 and `sys.stdlib_module_names` needs 3.10, while pyproject declares
+    3.11. On an unsupported interpreter the failure should name the version, not surface as a
+    confusing AttributeError from a checker script.
+    """
+
+    def test_engine_declares_its_minimum_python(self) -> None:
+        import metrology
+
+        assert metrology.MINIMUM_PYTHON == (3, 11)
+
+    def test_declared_minimum_matches_pyproject(self) -> None:
+        pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+        assert 'requires-python = ">=3.11"' in pyproject
+
+    def test_makefile_guards_the_interpreter_version(self) -> None:
+        text = MAKEFILE.read_text(encoding="utf-8")
+
+        assert "check-python" in text

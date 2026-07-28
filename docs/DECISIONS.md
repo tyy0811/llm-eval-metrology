@@ -648,3 +648,63 @@ published file.
 sees are analysis choices wearing different clothes, and belong in the pre-registration on the same
 terms. Experiments 2 and 3 should register their illustrative selections the same way rather than
 picking the most striking example once results exist.
+
+---
+
+## D2.1 Schema contracts settled during the T2.1 corrective pass
+
+**Date:** 2026-07-28
+**Status:** settled
+**Refines:** the section 4 schema in PLAN.md, which says "optional" without saying optional per table or per row
+
+Review of T2.1 found four boundary defects and one underspecified contract. The defects were
+fixed with regression tests; the contract needed a decision, recorded here.
+
+### Optional columns may be partial, with explicit missing values
+
+The first implementation required `cost` and `category` on every row or on none. That is stricter
+than the plan and would obstruct Experiment 2, which puts a costed judge and an uncosted human
+anchor in one table: an all-or-none rule forces the caller to invent a cost for rows where the
+concept does not apply, and an invented zero is indistinguishable from a real one.
+
+**Decision.** Partial presence is legal. An absent `cost` is `nan` and an absent `category` is the
+empty string, exported as `MISSING_CATEGORY`. Both are distinguishable from a real value, which is
+the property that matters: `nan` propagates loudly through arithmetic instead of silently biasing a
+cost total downward.
+
+`label` is deliberately not given the same treatment. A missing label is not a label, and the
+long format already expresses absence by having no row at all. That is why `wide_to_long` skips
+blank cells rather than emitting `nan` labels.
+
+### A LabelTable is valid because it exists
+
+Validation lives in `__post_init__`, not in `from_rows`, because `from_rows` is not the only door:
+`_take` constructs instances directly and so can any caller. Construction now validates column
+lengths, label finiteness, blank identifiers, and key uniqueness however the instance was built.
+
+Arrays are copied on construction and marked read-only. `frozen=True` protects only the attribute
+binding, so without this a caller could rewrite a validated label to `nan` in place and every
+downstream estimate would inherit it. This was confirmed reachable before the fix.
+
+### Identifiers must be real, and runs must be exact integers
+
+`str(None)` is `"None"`, a plausible-looking identifier that would silently merge every missing id
+into one bucket, so null and blank key fields are rejected. `int()` truncates 1.5 to 1 and coerces
+`True` to 1, either of which merges two distinct runs and corrupts the uniqueness key without any
+error surfacing, so `run` requires an exact, finite, nonnegative integer. Integral floats are
+accepted because CSV parsing produces them.
+
+### `paired` refuses four comparisons it used to accept
+
+A system paired with itself, a pair where neither system was scored by the named instrument, a
+pair where one side has no rows under it, and an undeclared choice of run. The last one is the
+subtle one: system A at run 0 could align against system B at run 1, producing a cross-run
+comparison nobody asked for. `paired` now takes an optional `run=`, required whenever the scoped
+rows span more than one run.
+
+### Interpreter version is guarded, not assumed
+
+`metrology` raises on import below Python 3.11, and `make check-python` gates every check target
+with a message naming the interpreter and the fix. The engine uses `zip(strict=)` and the checker
+scripts use `sys.stdlib_module_names`, both 3.10 or newer, so an older interpreter otherwise fails
+somewhere unhelpful. Verified against the 3.9.4 interpreter present on the development machine.
