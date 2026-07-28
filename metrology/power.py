@@ -33,14 +33,26 @@ from scipy.stats import binom
 #: Registered in the Experiment 1 pre-registration, section 5.
 DEFAULT_TARGET_POWER = 0.80
 
-#: Grid step for the MDE search, in units of rate difference. One item out of 500 is 0.002, so
-#: this resolves well below a single instance and the reported effect is not grid-limited.
-MDE_RESOLUTION = 1e-5
+#: Bisection tolerance for the MDE search, in units of rate difference. The search returns a
+#: power-attaining **upper bracket** within this distance of the true threshold. It does not
+#: round onto a grid, which is why this is a tolerance and not a resolution. One item out of
+#: 500 is 0.002, so the default sits well below a single instance.
+MDE_TOLERANCE = 1e-5
+
+#: Reporting states. `unattainable` is a domain finding, not an error: power is capped at
+#: P(D >= gap floor), so a sparse benchmark can miss the target at every effect size.
+STATUS_ATTAINABLE = "attainable"
+STATUS_UNATTAINABLE = "unattainable"
 
 
 @dataclass(frozen=True)
 class MdeResult:
-    """Smallest rate difference reaching a target power, or a statement that none does."""
+    """Smallest rate difference reaching a target power, or a statement that none does.
+
+    Unattainability is reported through `status` rather than raised. An exception should mean
+    invalid input or a failed computation, whereas "this benchmark cannot reach 80 percent power
+    at any effect size" is a result worth putting on a card.
+    """
 
     n: int
     discordance_rate: float
@@ -50,11 +62,61 @@ class MdeResult:
     instances: float | None
     achieved_power: float | None
     max_attainable_power: float
-    resolution: float
+    tolerance: float
+
+    def __post_init__(self) -> None:
+        """D2.3: the invariant is enforced here, whatever built the instance."""
+        _exact_positive_int(self.n, "n", minimum=1)
+        _require_discordance_rate(self.discordance_rate)
+        _require_unit_interval(self.alpha, "alpha")
+        _require_unit_interval(self.target_power, "target_power")
+        _require_positive_tolerance(self.tolerance)
+
+        if not 0.0 <= self.max_attainable_power <= 1.0 or not math.isfinite(
+            self.max_attainable_power
+        ):
+            raise ValueError(
+                f"max_attainable_power must be in [0, 1], got {self.max_attainable_power!r}"
+            )
+
+        populated = [
+            field is not None
+            for field in (self.rate_difference, self.instances, self.achieved_power)
+        ]
+        if any(populated) and not all(populated):
+            raise ValueError(
+                "attainable results carry rate_difference, instances, and achieved_power "
+                "together; unattainable results carry none of them"
+            )
+
+        if self.rate_difference is None:
+            return
+
+        if not math.isfinite(self.rate_difference) or not (
+            0.0 <= self.rate_difference <= self.discordance_rate + 1e-12
+        ):
+            raise ValueError(
+                f"rate_difference must be in [0, discordance_rate], got {self.rate_difference!r}"
+            )
+        if not math.isclose(self.instances, self.rate_difference * self.n, rel_tol=1e-9):
+            raise ValueError(
+                f"instances must equal rate_difference * n, got {self.instances!r} against "
+                f"{self.rate_difference * self.n!r}"
+            )
+        if self.achieved_power < self.target_power:
+            raise ValueError(
+                f"achieved_power {self.achieved_power!r} is below the target "
+                f"{self.target_power!r}, so this is not an attainable result"
+            )
+
+    @property
+    def status(self) -> str:
+        """`attainable` or `unattainable`, the reporting state consumed by T2.5."""
+        return STATUS_ATTAINABLE if self.rate_difference is not None else STATUS_UNATTAINABLE
 
     @property
     def attainable(self) -> bool:
-        return self.rate_difference is not None
+        return self.status == STATUS_ATTAINABLE
 
 
 @cache
@@ -101,6 +163,11 @@ def mcnemar_power(
         )
 
     q = float(discordance_rate)
+    if q == 0.0:
+        # No discordant pairs can arise, so no split exists to reject on. Power is exactly
+        # zero rather than undefined, and psi below would divide by zero.
+        return 0.0
+
     # Conditional on a pair being discordant, it favours system A with probability psi.
     psi = (q + rate_difference) / (2.0 * q)
     psi = min(1.0, max(0.0, psi))
@@ -124,7 +191,9 @@ def mcnemar_power(
         upper = binom.sf(d_partial - c_partial - 1, d_partial, psi)
         contribution[partial] = lower + upper
 
-    return float(np.dot(d_probs, contribution))
+    # Clamped because this is a probability. Summing ~n float terms can overshoot 1 by an ulp,
+    # and an out-of-range "probability" would then fail the MdeResult invariant downstream.
+    return float(min(1.0, max(0.0, np.dot(d_probs, contribution))))
 
 
 @cache
@@ -145,7 +214,7 @@ def mde_paired_binary(
     discordance_rate: float,
     alpha: float,
     target_power: float = DEFAULT_TARGET_POWER,
-    resolution: float = MDE_RESOLUTION,
+    tolerance: float = MDE_TOLERANCE,
 ) -> MdeResult:
     """Smallest absolute rate difference whose unconditional power reaches `target_power`.
 
@@ -158,6 +227,7 @@ def mde_paired_binary(
     _require_discordance_rate(discordance_rate)
     _require_unit_interval(alpha, "alpha")
     _require_unit_interval(target_power, "target_power")
+    _require_positive_tolerance(tolerance)
 
     q = float(discordance_rate)
     ceiling = mcnemar_power(n=n, discordance_rate=q, rate_difference=q, alpha=alpha)
@@ -171,13 +241,13 @@ def mde_paired_binary(
             instances=None,
             achieved_power=None,
             max_attainable_power=ceiling,
-            resolution=resolution,
+            tolerance=tolerance,
         )
 
-    # Power is monotone in |delta| at fixed q, so bisect on the smallest delta that reaches
-    # the target, then round up to the grid so the reported effect is never optimistic.
+    # Power is monotone in |delta| at fixed q, so bisect for the threshold. `high` is kept as
+    # an upper bracket that attains the target, so the reported effect is never optimistic.
     low, high = 0.0, q
-    while high - low > resolution:
+    while high - low > tolerance:
         middle = (low + high) / 2.0
         if (
             mcnemar_power(n=n, discordance_rate=q, rate_difference=middle, alpha=alpha)
@@ -197,7 +267,7 @@ def mde_paired_binary(
         instances=high * n,
         achieved_power=achieved,
         max_attainable_power=ceiling,
-        resolution=resolution,
+        tolerance=tolerance,
     )
 
 
@@ -217,6 +287,14 @@ def _exact_positive_int(value: object, name: str, *, minimum: int = 0) -> int:
     return result
 
 
+def _require_positive_tolerance(value: float) -> None:
+    """Zero or negative would not terminate the bisection; nan would exit it immediately."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise TypeError(f"tolerance must be a number, got {value!r}")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"tolerance must be finite and positive, got {value!r}")
+
+
 def _require_unit_interval(value: float, name: str) -> None:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise TypeError(f"{name} must be a number, got {value!r}")
@@ -227,5 +305,5 @@ def _require_unit_interval(value: float, name: str) -> None:
 def _require_discordance_rate(value: float) -> None:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise TypeError(f"discordance_rate must be a number, got {value!r}")
-    if not math.isfinite(value) or not 0 < value <= 1:
-        raise ValueError(f"discordance_rate must be in (0, 1], got {value!r}")
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise ValueError(f"discordance_rate must be in [0, 1], got {value!r}")

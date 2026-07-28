@@ -135,7 +135,7 @@ class TestMde:
         below = mcnemar_power(
             n=500,
             discordance_rate=0.3,
-            rate_difference=result.rate_difference - result.resolution,
+            rate_difference=result.rate_difference - result.tolerance,
             alpha=0.05,
         )
         assert below < 0.80
@@ -210,8 +210,9 @@ class TestValidation:
         with pytest.raises(ValueError, match="discordance"):
             mcnemar_power(n=100, discordance_rate=0.1, rate_difference=0.2, alpha=0.05)
 
-    @pytest.mark.parametrize("q", [0.0, -0.1, 1.5, float("nan")])
+    @pytest.mark.parametrize("q", [-0.1, 1.5, float("nan")])
     def test_invalid_discordance_rate_is_rejected(self, q: float) -> None:
+        """0.0 is deliberately absent: zero discordance is valid, see TestZeroDiscordance."""
         with pytest.raises(ValueError, match="discordance"):
             mcnemar_power(n=100, discordance_rate=q, rate_difference=0.0, alpha=0.05)
 
@@ -229,3 +230,135 @@ class TestValidation:
     def test_invalid_item_count_is_rejected(self, n) -> None:
         with pytest.raises((ValueError, TypeError)):
             mcnemar_power(n=n, discordance_rate=0.3, rate_difference=0.1, alpha=0.05)
+
+
+class TestZeroDiscordance:
+    """Zero observed discordance is a valid scenario, not invalid input.
+
+    Nine of the nineteen registered adjacent pairs are tie-forced, and the pre-registration
+    asks for an MDE at each pair's observed discordance, so `q = 0` will actually arrive.
+    """
+
+    def test_zero_discordance_gives_zero_power(self) -> None:
+        assert mcnemar_power(n=500, discordance_rate=0.0, rate_difference=0.0, alpha=0.05) == 0.0
+
+    def test_zero_discordance_admits_no_nonzero_difference(self) -> None:
+        with pytest.raises(ValueError, match="discordance"):
+            mcnemar_power(n=500, discordance_rate=0.0, rate_difference=0.01, alpha=0.05)
+
+    def test_mde_at_zero_discordance_is_unattainable_with_zero_ceiling(self) -> None:
+        result = mde_paired_binary(n=500, discordance_rate=0.0, alpha=0.05, target_power=0.80)
+
+        assert result.status == "unattainable"
+        assert result.max_attainable_power == 0.0
+        assert result.rate_difference is None
+        assert result.instances is None
+        assert result.achieved_power is None
+
+
+class TestReportingStatus:
+    def test_attainable_result_reports_its_status(self) -> None:
+        result = mde_paired_binary(n=500, discordance_rate=0.3, alpha=0.05, target_power=0.80)
+
+        assert result.status == "attainable"
+        assert result.attainable is True
+
+    def test_unattainable_result_reports_its_status(self) -> None:
+        result = mde_paired_binary(n=500, discordance_rate=0.005, alpha=0.05, target_power=0.80)
+
+        assert result.status == "unattainable"
+        assert result.attainable is False
+
+
+class TestTolerance:
+    def test_tolerance_is_carried_on_the_result(self) -> None:
+        result = mde_paired_binary(
+            n=500, discordance_rate=0.3, alpha=0.05, target_power=0.80, tolerance=1e-4
+        )
+
+        assert result.tolerance == 1e-4
+
+    def test_bracket_is_within_tolerance_of_the_true_threshold(self) -> None:
+        """The search returns a power-attaining upper bracket, it does not round onto a grid."""
+        tolerance = 1e-4
+        result = mde_paired_binary(
+            n=500, discordance_rate=0.3, alpha=0.05, target_power=0.80, tolerance=tolerance
+        )
+
+        assert result.achieved_power >= 0.80
+        just_below = mcnemar_power(
+            n=500,
+            discordance_rate=0.3,
+            rate_difference=result.rate_difference - tolerance,
+            alpha=0.05,
+        )
+        assert just_below < 0.80
+
+    @pytest.mark.parametrize("tolerance", [0.0, -1e-5, float("nan"), float("inf")])
+    def test_invalid_tolerance_is_rejected(self, tolerance: float) -> None:
+        """Zero or negative would not terminate; nan would return the maximum immediately."""
+        with pytest.raises(ValueError, match="tolerance"):
+            mde_paired_binary(
+                n=500, discordance_rate=0.3, alpha=0.05, target_power=0.80, tolerance=tolerance
+            )
+
+
+class TestMdeResultInvariant:
+    """D2.3: every dataclass carrying data validates in __post_init__."""
+
+    def valid(self, **overrides):
+        fields = {
+            "n": 500,
+            "discordance_rate": 0.3,
+            "alpha": 0.05,
+            "target_power": 0.8,
+            "rate_difference": 0.07,
+            "instances": 35.0,
+            "achieved_power": 0.81,
+            "max_attainable_power": 1.0,
+            "tolerance": 1e-5,
+        }
+        fields.update(overrides)
+        return MdeResult(**fields)
+
+    def test_a_valid_result_still_builds(self) -> None:
+        assert self.valid().status == "attainable"
+
+    def test_partially_populated_attainable_fields_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="attainab"):
+            self.valid(instances=None)
+
+    def test_partially_populated_unattainable_fields_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="attainab"):
+            self.valid(rate_difference=None, instances=None)
+
+    def test_achieved_power_below_target_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="achieved_power"):
+            self.valid(achieved_power=0.5)
+
+    def test_instances_inconsistent_with_the_rate_are_rejected(self) -> None:
+        with pytest.raises(ValueError, match="instances"):
+            self.valid(instances=999.0)
+
+    def test_rate_difference_above_the_discordance_rate_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="rate_difference"):
+            self.valid(rate_difference=0.9, instances=450.0)
+
+    def test_invalid_max_attainable_power_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="max_attainable_power"):
+            self.valid(max_attainable_power=1.5)
+
+    def test_invalid_n_is_rejected(self) -> None:
+        with pytest.raises((ValueError, TypeError)):
+            self.valid(n=0)
+
+    def test_invalid_alpha_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="alpha"):
+            self.valid(alpha=1.5)
+
+    def test_a_fully_unattainable_result_builds(self) -> None:
+        result = self.valid(
+            rate_difference=None, instances=None, achieved_power=None, max_attainable_power=0.04
+        )
+
+        assert result.status == "unattainable"
