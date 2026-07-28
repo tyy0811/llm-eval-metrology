@@ -899,3 +899,51 @@ report separability at `alpha / m` and accept that resolved can exceed it; repor
 the loosest bar any member could face, which restores `resolved <= separable` but changes the
 registered floor from 10 to 6; or define it per member at the bar that member actually faced in
 the step-down.
+
+---
+
+## D2.7 Separability is Holm applied to the per-pair minimum attainable p-values
+
+**Date:** 2026-07-28
+**Status:** settled by Jane
+**Resolves:** the open question left by D2.6, which blocked T2.6
+
+D2.6 recorded three candidate definitions of separability and none was satisfactory. The chosen
+answer is a fourth: run the family's **own Holm procedure** over the vector of per-pair minimum
+attainable p-values.
+
+```
+p_floor[i]       = p_value_floor(abs(gap[i]))
+separable_count  = holm(named_p_floors, alpha).n_rejected
+resolved_count   = observed_holm.n_rejected
+```
+
+**Why this is right and the others were not.**
+
+- Comparing each gap against the gateway floor (the rejected option 1) ignores that Holm loosens
+  after the first rejection, so it can report fewer separable than resolved. That contradicts the
+  definitions outright and no adjacent explanatory text repairs it.
+- Using `alpha` as the bar (option 2) ignores the gateway entirely: nothing can be rejected unless
+  something first clears `alpha / m`.
+- Defining it per member at the bar that member actually faced (option 3) makes a resolving-power
+  claim depend on observed results, which is exactly what the claim is supposed to bound.
+
+Option 4 keeps the gateway and keeps the claim independent of observed overlaps: a pair below the
+first-rejection floor cannot open the family, but it can follow one that does, so it is separable.
+
+**The invariant now holds by construction.** Observed p is at least the floor for every pair, and
+Holm is monotone in the p vector, so best-case rejections weakly exceed observed ones and
+`resolved_count <= separable_count` always. `FamilyReport.__post_init__` asserts it rather than
+trusting the derivation.
+
+**Verified on both cases.** Gaps 40 and 6: floors 0 and 0.03125, best-case Holm rejects both, so
+separable 2 against resolved 2, with a gateway floor of 7. The registered 19 gaps: the smallest
+floor is 0.015625 against a first critical of 0.00263, so nothing rejects, giving separable 0,
+resolved 0, gateway floor 10. D1.9's example is preserved exactly.
+
+**Naming.** The floor is no longer called "best-case family floor", which was misleading once
+separability itself became the best-case computation. It is the **family gateway floor**, the bar
+the first rejection must clear, exposed as `first_rejection_gap_floor`. This supersedes that field
+name in D1.9. The structured finding gains
+`separability_basis: "Holm applied to per-pair minimum attainable p-values"`, so a card states how
+its headline was derived rather than leaving a reader to assume.

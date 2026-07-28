@@ -182,7 +182,7 @@ class TestFamilyReport:
         """The translation T2.4 was kept out of, performed here."""
         result = self.family()
 
-        assert result.best_case_gap_floor == 10
+        assert result.first_rejection_gap_floor == 10
 
     def test_largest_observed_gap_is_reported(self) -> None:
         assert self.family().largest_observed_gap == 7
@@ -191,7 +191,7 @@ class TestFamilyReport:
         result = self.family()
 
         assert result.separable_count == 0
-        assert result.largest_observed_gap < result.best_case_gap_floor
+        assert result.largest_observed_gap < result.first_rejection_gap_floor
 
     def test_a_family_with_a_large_gap_can_separate(self) -> None:
         members = [counts("wide", n01=0, n10=40), counts("narrow", n01=15, n10=16)]
@@ -234,11 +234,12 @@ class TestFamilyCardJson:
 
         assert headline == {"separable_count": 0, "family_size": 19, "unit": "adjacent_pairs"}
 
-    def test_the_floor_is_labeled_best_case(self) -> None:
+    def test_the_floor_is_labeled_as_the_gateway(self) -> None:
+        """Renamed from best-case: it bounds the first rejection, not the best case overall."""
         limit = self.family_card()["family_finding"]["limit"]
 
-        assert limit["floor_label"] == "best-case family floor"
-        assert limit["best_case_family_floor"] == 10
+        assert limit["floor_label"] == "family gateway floor, cleared by the first rejection"
+        assert limit["first_rejection_gap_floor"] == 10
 
     def test_the_inference_between_the_two_numbers_is_rendered(self) -> None:
         """D1.9 face requirement three: the reader must not perform the step themselves."""
@@ -380,7 +381,7 @@ class TestSeparableIsNotResolved:
         result = self.family_with_a_clearing_gap()
 
         assert result.largest_observed_gap == 12
-        assert result.largest_observed_gap >= result.best_case_gap_floor
+        assert result.largest_observed_gap >= result.first_rejection_gap_floor
         assert result.separable_count == 1
 
     def test_that_same_pair_is_not_resolved(self) -> None:
@@ -402,43 +403,24 @@ class TestSeparableIsNotResolved:
             members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
         )
 
-        assert result.largest_observed_gap < result.best_case_gap_floor
+        assert result.largest_observed_gap < result.first_rejection_gap_floor
         assert result.separable_count == 0
         assert result.resolved_count == 0
 
-    def test_holm_can_resolve_a_pair_below_the_family_floor(self) -> None:
-        """Recorded as an open semantic question, not asserted as desirable.
+    def test_a_pair_below_the_gateway_floor_is_still_separable(self) -> None:
+        """Superseded the contradiction this test used to document.
 
-        Separability is measured against `alpha / m`, the bar the family's first rejection must
-        clear. Holm then loosens, so once one pair opens the family a second can be rejected
-        with a gap below that floor. `resolved_count` can therefore exceed `separable_count`,
-        which reads as a contradiction on a card and needs a ruling before T2.6.
+        Separability now runs Holm over the per-pair p-value floors, so the gap-6 pair, which
+        cannot open the family, is correctly separable because it can follow the gap-40 pair.
         """
         members = [counts("wide", n01=0, n10=40), counts("six", n01=0, n10=6)]
         result = build_family_report(
             members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
         )
 
-        assert result.best_case_gap_floor == 7
+        assert result.first_rejection_gap_floor == 7
         assert result.resolved_count == 2
-        assert result.separable_count == 1
-
-    def test_headline_reports_separability_and_observed_rejections_separately(self) -> None:
-        card = family_card_json(self.family_with_a_clearing_gap())
-        finding = card["family_finding"]
-
-        assert finding["headline"]["separable_count"] == 1
-        assert finding["observed"]["resolved_count"] == 0
-
-    def test_the_registered_case_still_reads_zero_on_both(self) -> None:
-        gaps = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
-        members = [counts(f"pair_{i}", n01=15, n10=15 + g) for i, g in enumerate(gaps)]
-
-        result = build_family_report(
-            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
-        )
-
-        assert (result.separable_count, result.resolved_count) == (0, 0)
+        assert result.separable_count == 2
 
 
 class TestThresholdsAreNotConflated:
@@ -474,7 +456,7 @@ class TestThresholdsAreNotConflated:
         member = result.members[0]
 
         assert member.required_net_edge == 21
-        assert result.best_case_gap_floor == 10
+        assert result.first_rejection_gap_floor == 10
         assert member.ruler_threshold == pytest.approx(result.first_critical)
 
     def test_each_threshold_is_labeled_on_the_card(self) -> None:
@@ -624,3 +606,114 @@ class TestFamilyCardRequiredShape:
 
         with pytest.raises(ValueError):
             validate_card({"card_kind": "family_summary", "family_finding": {"a": 1}})
+
+
+class TestSeparabilityViaBestCaseHolm:
+    """Separability runs the family's own gateway logic on the best case.
+
+    For each pair the minimum attainable p-value is `p_value_floor(|gap|)`. Holm applied to that
+    vector answers "what could reject under jointly best-case overlaps", which respects the
+    gateway (a pair below the first-rejection floor can still follow one that clears it) without
+    letting a resolving-power claim depend on observed overlaps.
+    """
+
+    def test_a_pair_below_the_gateway_floor_can_still_be_separable(self) -> None:
+        """Gap 6 cannot open the family, but it can follow gap 40."""
+        members = [counts("wide", n01=0, n10=40), counts("six", n01=0, n10=6)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert result.first_rejection_gap_floor == 7
+        assert result.separable_count == 2
+        assert result.resolved_count == 2
+
+    def test_the_registered_family_separates_nothing(self) -> None:
+        """D1.9 preserved exactly: the smallest floor cannot clear alpha / 19."""
+        gaps = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+        members = [counts(f"pair_{i}", n01=15, n10=15 + g) for i, g in enumerate(gaps)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert result.first_rejection_gap_floor == 10
+        assert result.separable_count == 0
+        assert result.resolved_count == 0
+
+    @pytest.mark.parametrize(
+        "gaps",
+        [
+            [40, 6],
+            [0, 2, 7, 3, 0, 0, 2],
+            [12, 12, 12],
+            [0, 0, 0],
+            [40, 30, 20, 6, 1],
+            [9, 9],
+        ],
+    )
+    def test_resolved_never_exceeds_separable(self, gaps: list[int]) -> None:
+        """The invariant option 1 could not provide.
+
+        Observed p is at least the floor for every pair, and Holm is monotone in the p vector,
+        so best-case rejections weakly exceed observed ones.
+        """
+        members = [counts(f"p{i}", n01=10, n10=10 + g) for i, g in enumerate(gaps)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert result.resolved_count <= result.separable_count
+
+    def test_separability_ignores_observed_overlap(self) -> None:
+        """Same gaps, wildly different discordance, identical separability."""
+        tight = [counts(f"p{i}", n01=0, n10=g) for i, g in enumerate([12, 3], start=1)]
+        loose = [counts(f"p{i}", n01=200, n10=200 + g) for i, g in enumerate([12, 3], start=1)]
+
+        a = build_family_report(tight, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE)
+        b = build_family_report(loose, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE)
+
+        assert a.separable_count == b.separable_count
+        assert a.resolved_count != b.resolved_count
+
+    def test_per_member_separability_flags_align_with_members(self) -> None:
+        members = [counts("wide", n01=0, n10=40), counts("six", n01=0, n10=6)]
+
+        result = build_family_report(
+            members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
+        )
+
+        assert len(result.separable) == len(result.members)
+        assert result.separable == (True, True)
+
+
+class TestSeparabilityLabelling:
+    def card(self):
+        gaps = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+        members = [counts(f"pair_{i}", n01=15, n10=15 + g) for i, g in enumerate(gaps)]
+        return family_card_json(
+            build_family_report(
+                members,
+                instrument="hidden-tests",
+                alpha=0.05,
+                provenance=PROVENANCE,
+                secondary_family_size=10,
+            )
+        )
+
+    def test_the_basis_of_separability_is_stated(self) -> None:
+        finding = self.card()["family_finding"]
+
+        assert (
+            finding["separability_basis"] == "Holm applied to per-pair minimum attainable p-values"
+        )
+
+    def test_the_floor_is_named_as_the_gateway_not_the_best_case(self) -> None:
+        """It bounds the first rejection, which is not the same as the best case overall."""
+        limit = self.card()["family_finding"]["limit"]
+
+        assert limit["first_rejection_gap_floor"] == 10
+        assert limit["floor_label"] == "family gateway floor, cleared by the first rejection"
+        assert "best_case_family_floor" not in limit

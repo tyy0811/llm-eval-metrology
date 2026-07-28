@@ -37,6 +37,7 @@ from .paired import (
     TWO_SIDED_CONVENTION,
     mcnemar_exact_from_counts,
     minimum_gap_for_threshold,
+    p_value_floor,
 )
 from .power import (
     MdeResult,
@@ -216,7 +217,8 @@ class FamilyReport:
     adjusted: tuple[float, ...]
     rejected: tuple[bool, ...]
     first_critical: float
-    best_case_gap_floor: int
+    first_rejection_gap_floor: int
+    separable: tuple[bool, ...]
     secondary_family_size: int | None
     secondary_gap_floor: int | None
     provenance: Provenance
@@ -235,8 +237,21 @@ class FamilyReport:
                 f"members, adjusted, and rejected must align: "
                 f"{len(self.members)}, {len(self.adjusted)}, {len(self.rejected)}"
             )
-        if self.best_case_gap_floor < 0:
-            raise ValueError(f"gap floor must not be negative, got {self.best_case_gap_floor}")
+        if len(self.separable) != len(self.members):
+            raise ValueError(
+                f"separability flags must align with members: "
+                f"{len(self.separable)} against {len(self.members)}"
+            )
+        if self.first_rejection_gap_floor < 0:
+            raise ValueError(
+                f"gap floor must not be negative, got {self.first_rejection_gap_floor}"
+            )
+        if self.resolved_count > self.separable_count:
+            raise ValueError(
+                f"resolved_count {self.resolved_count} exceeds separable_count "
+                f"{self.separable_count}; a comparison cannot reject unless rejection was "
+                "reachable, so this indicates the two were computed inconsistently"
+            )
 
     @property
     def n_tests(self) -> int:
@@ -249,13 +264,21 @@ class FamilyReport:
 
     @property
     def separable_count(self) -> int:
-        """How many comparisons could have rejected under some feasible configuration.
+        """How many comparisons could reject under jointly best-case overlaps.
 
-        A pair's best case is every disagreement running one way, which needs its gap to clear
-        the family floor. This is the resolving-power finding, and it is a weaker condition than
-        having rejected, so `resolved_count <= separable_count` always holds.
+        Computed by running the family's own Holm procedure over the vector of per-pair minimum
+        attainable p-values, `p_value_floor(|gap|)`. That respects the gateway: a pair below the
+        first-rejection floor cannot open the family, but it can follow one that does, so it is
+        still separable.
+
+        Comparing each gap against the gateway floor instead would understate this and could
+        report fewer separable than resolved, contradicting the definitions. Using observed
+        overlaps would make a resolving-power claim depend on the results it is meant to bound.
+
+        Observed p is at least the floor for every pair and Holm is monotone in the p vector, so
+        `resolved_count <= separable_count` holds by construction.
         """
-        return sum(1 for member in self.members if abs(member.net_edge) >= self.best_case_gap_floor)
+        return sum(self.separable)
 
     @property
     def largest_observed_gap(self) -> int:
@@ -377,6 +400,11 @@ def build_family_report(
         for item in members
     )
 
+    best_case = holm(
+        [(item.name, p_value_floor(abs(item.net_edge))) for item in members], alpha=alpha
+    )
+    best_case_by_name = best_case.by_name()
+
     secondary_floor = None
     if secondary_family_size:
         secondary_floor = minimum_gap_for_threshold(alpha / secondary_family_size)
@@ -388,7 +416,8 @@ def build_family_report(
         adjusted=corrected.adjusted,
         rejected=corrected.rejected,
         first_critical=first_critical,
-        best_case_gap_floor=minimum_gap_for_threshold(first_critical),
+        first_rejection_gap_floor=minimum_gap_for_threshold(first_critical),
+        separable=tuple(best_case_by_name[item.name].rejected for item in members),
         secondary_family_size=secondary_family_size,
         secondary_gap_floor=secondary_floor,
         provenance=provenance,
@@ -440,18 +469,20 @@ def pair_card_json(report: PairReport) -> dict:
 
 def family_card_json(report: FamilyReport) -> dict:
     """Card JSON for a family. Carries a `family_finding` and **no** `verdict`, per D1.9."""
-    separates = report.largest_observed_gap >= report.best_case_gap_floor
     inference = (
-        f"the largest observed gap of {report.largest_observed_gap} reaches the floor of "
-        f"{report.best_case_gap_floor}, so separation is reachable"
-        if separates
+        f"{report.separable_count} of {report.n_tests} pairs could reject under best-case "
+        f"overlaps; the family gateway floor is {report.first_rejection_gap_floor} and the "
+        f"largest observed gap is {report.largest_observed_gap}"
+        if report.separable_count
         else (
-            f"every adjacent gap sits below the floor of {report.best_case_gap_floor}, so no "
-            "pair can separate at any discordance configuration"
+            f"every adjacent gap sits below the gateway floor of "
+            f"{report.first_rejection_gap_floor}, so no pair can open the family and none can "
+            "separate at any discordance configuration"
         )
     )
     finding = {
         "claim_type": "resolving_power",
+        "separability_basis": "Holm applied to per-pair minimum attainable p-values",
         "headline": {
             "separable_count": report.separable_count,
             "family_size": report.n_tests,
@@ -473,8 +504,8 @@ def family_card_json(report: FamilyReport) -> dict:
             "threshold": report.first_critical,
         },
         "limit": {
-            "best_case_family_floor": report.best_case_gap_floor,
-            "floor_label": "best-case family floor",
+            "first_rejection_gap_floor": report.first_rejection_gap_floor,
+            "floor_label": "family gateway floor, cleared by the first rejection",
             "observed_extreme": report.largest_observed_gap,
             "observed_extreme_label": "largest observed adjacent gap",
             "inference": inference,
@@ -528,7 +559,7 @@ _FINDING_SHAPE = {
     "observed": ("resolved_count", "decision_rule"),
     "criterion": ("statistic", "convention", "correction", "alpha", "threshold"),
     "limit": (
-        "best_case_family_floor",
+        "first_rejection_gap_floor",
         "floor_label",
         "observed_extreme",
         "observed_extreme_label",
