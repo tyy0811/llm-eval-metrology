@@ -146,6 +146,25 @@ def rejection_critical_count(d: int, *, alpha: float) -> int:
     return critical
 
 
+def discordance_rate_from_counts(*, n01: int, n10: int, n: int) -> float:
+    """Discordance rate `q = (n01 + n10) / n`, the plug-in scenario for a real comparison.
+
+    Exists so that no caller derives `q` from a published rate difference. A tied pair has
+    `n01 = n10`, so its **gap** is zero while its **discordance** can be large: 20 against 20
+    out of 500 items is a gap of 0 and a `q` of 0.08. Deriving `q` from the gap would hand 0 to
+    the MDE for every tied comparison and report it as unattainable with zero power, when in
+    fact there is ample disagreement to measure.
+
+    Only total agreement, `n01 = n10 = 0`, gives `q = 0`.
+    """
+    n01 = _exact_positive_int(n01, "n01", minimum=0)
+    n10 = _exact_positive_int(n10, "n10", minimum=0)
+    n = _exact_positive_int(n, "n", minimum=1)
+    if n01 + n10 > n:
+        raise ValueError(f"discordant pairs ({n01} + {n10}) cannot exceed the item count ({n})")
+    return (n01 + n10) / n
+
+
 def mcnemar_power(
     *, n: int, discordance_rate: float, rate_difference: float, alpha: float
 ) -> float:

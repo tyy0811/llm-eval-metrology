@@ -802,3 +802,43 @@ hatch cannot reappear without someone deliberately removing the test and confron
 plausible-sounding consumer was never checked against the function's own shape. "No machinery
 before a consumer" is only enforceable if the claimed consumer is verified to be able to call the
 thing, so a named consumer now has to typecheck against the signature before it counts.
+
+---
+
+## D2.5 A tied pair is not a silent pair: `q` comes from discordant counts, never from the gap
+
+**Date:** 2026-07-28
+**Status:** settled, correcting a claim made in the T2.3 corrective pass
+
+The commit adding zero-discordance support justified it by saying that nine of the nineteen
+registered adjacent pairs are tie-forced, so `q = 0` would arrive on half the family. **That was
+wrong**, and it contradicts this project's own pre-registration.
+
+For a tied pair the resolved counts are equal, so `n01 = n10`. That sets the **gap** to zero. It
+says nothing about **discordance**, which is `q = (n01 + n10) / n` and can be large: 20 against
+20 out of 500 items is a gap of 0 and a `q` of 0.08. Only total agreement, `n01 = n10 = 0`,
+gives `q = 0`.
+
+PREREG D8 already states this correctly, in the rationale for choosing the ranks 1 and 2 card:
+"equal aggregate counts can conceal substantial disagreement". The error was losing that
+distinction one document later, not failing to notice it in the first place.
+
+**Consequences.**
+
+1. Zero-discordance support stays. It is a genuine edge case, reached when two systems agree on
+   every item, and it must not raise.
+2. **T2.5 and `run.py` derive `q` from `(n01 + n10) / n`, never from a published gap.** Deriving
+   it from the gap would hand `q = 0` to the MDE for every tied comparison and report
+   "unattainable, maximum power zero" for pairs with ample disagreement to measure. Since nine
+   of nineteen pairs are tied, that single mistake would have corrupted roughly half the
+   reported MDEs while looking entirely plausible.
+3. `power.discordance_rate_from_counts` exists so the correct derivation is the easy one, rather
+   than a rule someone has to remember.
+4. An integration fixture pins the distinction: gap 0 with `q = 0.08` yields an ordinary
+   attainable MDE, and a companion test asserts explicitly that the gap-derived rate would have
+   produced the unattainable result instead.
+
+**Why this is worth an entry.** The mistake was not in the code, which handled both cases
+correctly the whole time. It was in the reasoning about which case would occur, and it survived
+being written into a commit message as a justification. A wrong rationale attached to correct
+code is harder to catch than a bug, because the tests still pass.

@@ -14,13 +14,15 @@ import math
 import pytest
 from scipy.stats import binom
 
-from metrology.paired import minimum_gap_for_threshold
+from metrology.paired import mcnemar_exact, minimum_gap_for_threshold
 from metrology.power import (
     MdeResult,
+    discordance_rate_from_counts,
     mcnemar_power,
     mde_paired_binary,
     rejection_critical_count,
 )
+from metrology.schema import LabelTable
 
 
 def brute_force_power(n: int, q: float, delta: float, alpha: float) -> float:
@@ -235,8 +237,11 @@ class TestValidation:
 class TestZeroDiscordance:
     """Zero observed discordance is a valid scenario, not invalid input.
 
-    Nine of the nineteen registered adjacent pairs are tie-forced, and the pre-registration
-    asks for an MDE at each pair's observed discordance, so `q = 0` will actually arrive.
+    It arises only when two systems agree on every single item, that is `n01 = n10 = 0`. It is
+    **not** the tie-forced case: a tied pair has `n01 = n10`, which sets the net gap to zero
+    while leaving discordance `q = (n01 + n10) / n` free to be large. See `TestGapZeroWithReal
+    Discordance`, and PREREG D8, which states that equal aggregate counts can conceal
+    substantial disagreement.
     """
 
     def test_zero_discordance_gives_zero_power(self) -> None:
@@ -362,3 +367,82 @@ class TestMdeResultInvariant:
         )
 
         assert result.status == "unattainable"
+
+
+class TestDiscordanceRateFromCounts:
+    def test_rate_is_the_discordant_share_of_items(self) -> None:
+        assert discordance_rate_from_counts(n01=20, n10=20, n=500) == pytest.approx(0.08)
+
+    def test_rate_ignores_the_direction_of_disagreement(self) -> None:
+        """Only the total matters, which is why a tied pair can still have high discordance."""
+        balanced = discordance_rate_from_counts(n01=20, n10=20, n=500)
+        one_sided = discordance_rate_from_counts(n01=0, n10=40, n=500)
+
+        assert balanced == one_sided
+
+    def test_full_agreement_gives_zero(self) -> None:
+        assert discordance_rate_from_counts(n01=0, n10=0, n=500) == 0.0
+
+    def test_discordance_cannot_exceed_the_item_count(self) -> None:
+        with pytest.raises(ValueError, match="exceed"):
+            discordance_rate_from_counts(n01=300, n10=300, n=500)
+
+    def test_counts_must_be_exact_integers(self) -> None:
+        with pytest.raises((ValueError, TypeError)):
+            discordance_rate_from_counts(n01=1.5, n10=2, n=500)
+
+
+class TestGapZeroWithRealDiscordance:
+    """A tied pair is not a silent pair. Gap zero, discordance substantial.
+
+    This is the fixture that stops anyone deriving `q` from the published gap. Doing so would
+    hand `q = 0` to the MDE for every tied pair and report "unattainable, max power 0" for
+    comparisons that in fact have plenty of disagreement to measure.
+    """
+
+    def paired_table(self, n: int, n01: int, n10: int) -> LabelTable:
+        rows = []
+        for index in range(n):
+            if index < n10:
+                a, b = 1, 0
+            elif index < n10 + n01:
+                a, b = 0, 1
+            else:
+                a, b = 1, 1
+            item = f"i{index:04d}"
+            rows.append({"item_id": item, "system": "A", "instrument": "t", "label": a})
+            rows.append({"item_id": item, "system": "B", "instrument": "t", "label": b})
+        return LabelTable.from_rows(rows)
+
+    def test_a_tied_pair_can_carry_substantial_discordance(self) -> None:
+        pair = self.paired_table(500, n01=20, n10=20).paired("A", "B", instrument="t")
+
+        result = mcnemar_exact(pair)
+
+        assert result.net_edge == 0
+        assert result.n_discordant == 40
+        assert result.p_value == 1.0
+
+    def test_its_mde_is_ordinary_not_unattainable(self) -> None:
+        pair = self.paired_table(500, n01=20, n10=20).paired("A", "B", instrument="t")
+        outcome = mcnemar_exact(pair)
+
+        q = discordance_rate_from_counts(n01=outcome.n01, n10=outcome.n10, n=pair.n_items)
+        result = mde_paired_binary(n=pair.n_items, discordance_rate=q, alpha=0.05)
+
+        assert q == pytest.approx(0.08)
+        assert result.status == "attainable"
+        assert result.instances == pytest.approx(18.2, abs=1.0)
+
+    def test_deriving_the_rate_from_the_gap_would_have_been_wrong(self) -> None:
+        """The error this fixture exists to prevent, asserted explicitly."""
+        pair = self.paired_table(500, n01=20, n10=20).paired("A", "B", instrument="t")
+        outcome = mcnemar_exact(pair)
+
+        from_gap = abs(outcome.net_edge) / pair.n_items
+        from_counts = discordance_rate_from_counts(n01=outcome.n01, n10=outcome.n10, n=pair.n_items)
+
+        assert from_gap == 0.0
+        assert from_counts > 0.0
+        assert mde_paired_binary(n=500, discordance_rate=from_gap, alpha=0.05).attainable is False
+        assert mde_paired_binary(n=500, discordance_rate=from_counts, alpha=0.05).attainable
