@@ -20,4 +20,9 @@ htmlcov/
 
 # Derived upstream data is generated, never committed (docs/DECISIONS.md D1.4). What ships is
 # the fetch script, the upstream digests, the expected checksums, and de minimis aggregates.
-experiments/*/derived/labels.csv
+#
+# Deny by default with an allowlist. Naming files individually failed once: the rule listed
+# labels.csv, so a sidecar added later was tracked and per-instance ids were committed. A new
+# derived file is now ignored unless someone deliberately permits it here.
+experiments/*/derived/*
+!experiments/*/derived/aggregates.json

@@ -112,6 +112,7 @@
     "url": "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified/resolve/c104f840cc67f8b6eec6f759ebc8b2693d585d4a/data/test-00000-of-00001.parquet"
   },
   "derived": {
+    "aggregates.json": "caee69eb398374aa56406b686845789e6b7d542fa35f72360224bc9508aa7f31",
     "labels.csv": "ac96cdf6d6bb86ac3c8e0506f24e616f9b8bc02bc9aa96d5c5cfd2936b781a4a",
     "rows": 10000,
     "unevaluated.json": "011b38d5e09d473f7630bdb8ea09e8961d712908aca7b46a76a2b648ac6bc087"

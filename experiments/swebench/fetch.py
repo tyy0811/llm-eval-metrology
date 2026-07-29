@@ -86,6 +86,16 @@ class Entry:
     checked: object
     date: str
 
+    def __post_init__(self) -> None:
+        if self.rank < 1:
+            raise ValueError(f"rank must be at least 1, got {self.rank}")
+        if not isinstance(self.folder, str):
+            raise ValueError(f"folder must be a string, got {self.folder!r}")
+        if not 0.0 <= self.published_rate <= 100.0:
+            raise ValueError(
+                f"published_rate must be a percentage in [0, 100], got {self.published_rate!r}"
+            )
+
     @property
     def implied_resolved(self) -> int:
         """The resolved count the published rate implies, since one instance is 0.2 percent."""
@@ -116,6 +126,25 @@ class Artifact:
     no_generation: set[str] = field(default_factory=set)
     no_logs: set[str] = field(default_factory=set)
     covered: set[str] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        """D2.3. An artifact that exists must be one that can be reasoned about."""
+        for name in ("folder", "split_dir", "artifact_format", "url"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-blank string, got {value!r}")
+        if len(self.sha256) != 64 or any(c not in "0123456789abcdef" for c in self.sha256):
+            raise ValueError(f"sha256 must be 64 lowercase hex characters, got {self.sha256!r}")
+        for name in ("resolved", "no_generation", "no_logs", "covered"):
+            values = getattr(self, name)
+            if any(not isinstance(item, str) for item in values):
+                raise ValueError(f"{name} must contain only instance id strings")
+        overlap = self.resolved & (self.no_generation | self.no_logs)
+        if overlap:
+            raise ValueError(
+                f"{len(overlap)} id(s) are both resolved and unevaluated, "
+                f"e.g. {sorted(overlap)[:3]}"
+            )
 
 
 def sha256(payload: bytes) -> str:
@@ -180,6 +209,12 @@ def parse_artifact_document(document: object, artifact_format: str, folder: str)
             values = document.get(key, [])
             if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
                 raise GateFailure(f"{folder}: {key!r} must be a list of instance ids")
+            if len(set(values)) != len(values):
+                repeated = sorted({v for v in values if values.count(v) > 1})
+                raise GateFailure(
+                    f"{folder}: {key!r} has duplicate ids, e.g. {repeated[:3]}; a set would "
+                    "have hidden them and the count check would still have passed"
+                )
             out[key] = set(values)
         overlap = out["resolved"] & (out["no_generation"] | out["no_logs"])
         if overlap:
@@ -233,6 +268,14 @@ def disqualify(entry: Entry, artifact: Artifact | None, canonical: set[str]) -> 
     if not artifact.resolved <= canonical:
         stray = sorted(artifact.resolved - canonical)[:3]
         return f"gate 2: resolved ids outside the pinned instance set, e.g. {stray}"
+    for name in ("no_generation", "no_logs"):
+        ids = getattr(artifact, name)
+        if not ids <= canonical:
+            stray = sorted(ids - canonical)[:3]
+            return (
+                f"gate 2: {name} ids outside the pinned instance set, e.g. {stray}; the "
+                "registered sensitivity analysis cannot drop an instance that is not in the set"
+            )
     if artifact.covered and artifact.covered != canonical:
         return "gate 2: per-instance map does not cover the pinned instance set exactly"
     return None
@@ -295,7 +338,15 @@ def canonical_json(payload: object) -> str:
 
 
 def compare_manifest(expected: dict, observed: dict) -> list[str]:
-    """Every digest the committed manifest declares must match what this run saw."""
+    """Every digest the committed manifest declares must match what this run saw.
+
+    Artifacts are compared **in order**. Adjacency is defined by the published order, so a run
+    that selected the same twenty systems in a different sequence is a different experiment;
+    comparing them as a mapping reported no problem when all twenty were reversed.
+
+    Missing and extra derived entries are both errors, so a checksum cannot be dropped from the
+    manifest to make a mismatch disappear.
+    """
     problems = []
     for section in ("board", "dataset"):
         want = expected.get(section, {}).get("sha256")
@@ -303,22 +354,33 @@ def compare_manifest(expected: dict, observed: dict) -> list[str]:
         if want != got:
             problems.append(f"{section}: expected {want}, observed {got}")
 
-    want_artifacts = {a["system"]: a["sha256"] for a in expected.get("artifacts", [])}
-    got_artifacts = {a["system"]: a["sha256"] for a in observed["artifacts"]}
-    if set(want_artifacts) != set(got_artifacts):
-        missing = sorted(set(want_artifacts) ^ set(got_artifacts))[:3]
-        problems.append(f"artifacts: selected systems differ, e.g. {missing}")
-    for system, want in want_artifacts.items():
-        got = got_artifacts.get(system)
-        if got is not None and want != got:
-            problems.append(f"artifact {system}: expected {want}, observed {got}")
+    want_list = [(a["system"], a["sha256"]) for a in expected.get("artifacts", [])]
+    got_list = [(a["system"], a["sha256"]) for a in observed["artifacts"]]
+    if [name for name, _ in want_list] != [name for name, _ in got_list]:
+        if set(name for name, _ in want_list) == set(name for name, _ in got_list):
+            problems.append(
+                "artifacts: same systems in a different order; adjacency is defined by the "
+                "published order, so the selection is not interchangeable"
+            )
+        else:
+            differing = sorted(set(n for n, _ in want_list) ^ set(n for n, _ in got_list))[:3]
+            problems.append(f"artifacts: selected systems differ, e.g. {differing}")
+    else:
+        for (name, want), (_, got) in zip(want_list, got_list, strict=True):
+            if want != got:
+                problems.append(f"artifact {name}: expected {want}, observed {got}")
 
-    for name, want in expected.get("derived", {}).items():
-        if name == "rows":
-            continue
-        got = observed["derived"].get(name)
-        if want != got:
-            problems.append(f"derived {name}: expected {want}, observed {got}")
+    want_derived = {k: v for k, v in expected.get("derived", {}).items() if k != "rows"}
+    got_derived = {k: v for k, v in observed["derived"].items() if k != "rows"}
+    for name in sorted(set(want_derived) | set(got_derived)):
+        if name not in want_derived:
+            problems.append(f"derived {name}: present in this run but absent from the manifest")
+        elif name not in got_derived:
+            problems.append(f"derived {name}: declared in the manifest but not produced")
+        elif want_derived[name] != got_derived[name]:
+            problems.append(
+                f"derived {name}: expected {want_derived[name]}, observed {got_derived[name]}"
+            )
     return problems
 
 
@@ -415,17 +477,18 @@ def select_lazily(entries: list[Entry], canonical: set[str]) -> tuple[list, dict
     return chosen, artifacts, substitutions
 
 
-def clear_outputs() -> None:
-    """Remove derived files before a run.
+def clear_partials() -> None:
+    """Remove leftover `.partial` files from an interrupted write.
 
-    A failed fetch previously left the previous `labels.csv` in place, where a later analysis
-    would read it as current. Derived files are regenerable, so the safe state after a failure
-    is none of them rather than stale ones.
+    Deliberately **not** clearing the derived outputs. Doing that before the first network call
+    meant any failure dirtied a clean clone with a deleted tracked aggregate. Existing outputs
+    survive until every fetch, gate, and manifest check has passed, and are then replaced
+    atomically. Staleness is caught downstream instead: T3.2 verifies every input checksum
+    against the manifest before reading it.
     """
     if DERIVED.exists():
-        for path in sorted(DERIVED.iterdir()):
-            if path.is_file():
-                path.unlink()
+        for path in sorted(DERIVED.glob("*.partial")):
+            path.unlink()
 
 
 def atomic_write(path: Path, text: str) -> str:
@@ -453,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
 
     DERIVED.mkdir(exist_ok=True)
     MANIFESTS.mkdir(exist_ok=True)
-    clear_outputs()
+    clear_partials()
 
     print("gate 0: verifying the published board before parsing it")
     results, board_digest = gate_0_board()
@@ -522,6 +585,7 @@ def main(argv: list[str] | None = None) -> int:
         "derived": {
             "labels.csv": sha256(labels_csv.encode("utf-8")),
             "unevaluated.json": sha256(unevaluated.encode("utf-8")),
+            "aggregates.json": sha256(aggregates.encode("utf-8")),
             "rows": len(rows),
         },
     }

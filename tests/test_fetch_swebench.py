@@ -285,15 +285,28 @@ class TestManifestIsAnInput:
 
 
 class TestOutputStaging:
-    def test_a_run_starts_from_no_derived_files(self, tmp_path, monkeypatch) -> None:
-        """A failed fetch left the previous table readable as current."""
+    def test_existing_outputs_survive_the_start_of_a_run(self, tmp_path, monkeypatch) -> None:
+        """Superseded: clearing first dirtied a clean clone on any network failure.
+
+        Outputs are preserved until every check passes and are then replaced atomically.
+        Staleness is caught downstream, where T3.2 verifies input checksums before reading.
+        """
         monkeypatch.setattr(fetch, "DERIVED", tmp_path)
-        stale = tmp_path / "labels.csv"
-        stale.write_text("stale", encoding="utf-8")
+        existing = tmp_path / "labels.csv"
+        existing.write_text("previous", encoding="utf-8")
 
-        fetch.clear_outputs()
+        fetch.clear_partials()
 
-        assert not stale.exists()
+        assert existing.read_text(encoding="utf-8") == "previous"
+
+    def test_leftover_partials_are_removed(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(fetch, "DERIVED", tmp_path)
+        leftover = tmp_path / "labels.csv.partial"
+        leftover.write_text("half", encoding="utf-8")
+
+        fetch.clear_partials()
+
+        assert not leftover.exists()
 
     def test_writes_are_atomic_and_leave_no_partial(self, tmp_path) -> None:
         target = tmp_path / "out.csv"
@@ -357,3 +370,196 @@ class TestCommittedManifestMatchesTheRealRun:
         gaps = [counts[i] - counts[i + 1] for i in range(len(counts) - 1)]
 
         assert gaps == [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+
+
+class TestDerivedFilesAreNotTracked:
+    """D1.4: derived upstream data is generated, never committed.
+
+    The ignore rule named `labels.csv` specifically, so the sidecar added later was tracked and
+    23 per-instance ids were committed. The rule is now deny-by-default with an allowlist, so a
+    new derived file is ignored unless someone deliberately permits it.
+    """
+
+    def tracked(self) -> list[str]:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "ls-files", "experiments/swebench/derived/"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return [line for line in out.stdout.splitlines() if line]
+
+    def test_the_unevaluated_sidecar_is_not_tracked(self) -> None:
+        assert not any("unevaluated.json" in path for path in self.tracked())
+
+    def test_the_label_table_is_not_tracked(self) -> None:
+        assert not any("labels.csv" in path for path in self.tracked())
+
+    def test_only_the_de_minimis_aggregates_are_tracked(self) -> None:
+        assert self.tracked() == ["experiments/swebench/derived/aggregates.json"]
+
+    def test_a_hypothetical_new_derived_file_would_be_ignored(self) -> None:
+        """Deny-by-default: the next sidecar must not repeat this."""
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "check-ignore", "experiments/swebench/derived/something_new.json"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, "a new derived file would be tracked by default"
+
+
+class TestManifestComparisonIsOrdered:
+    def observed(self):
+        return {
+            "board": {"sha256": "aaa"},
+            "dataset": {"sha256": "bbb"},
+            "artifacts": [
+                {"system": "a", "sha256": "c1"},
+                {"system": "b", "sha256": "c2"},
+                {"system": "c", "sha256": "c3"},
+            ],
+            "derived": {"labels.csv": "d", "unevaluated.json": "e", "aggregates.json": "f"},
+        }
+
+    def test_reordered_artifacts_are_caught(self) -> None:
+        """Adjacency is defined by order, so an order change is a different experiment."""
+        expected = self.observed()
+        expected["artifacts"] = list(reversed(expected["artifacts"]))
+
+        assert any("order" in p for p in fetch.compare_manifest(expected, self.observed()))
+
+    def test_identical_order_reports_nothing(self) -> None:
+        assert fetch.compare_manifest(self.observed(), self.observed()) == []
+
+    def test_aggregates_are_checksummed(self) -> None:
+        expected = self.observed()
+        expected["derived"]["aggregates.json"] = "changed"
+
+        assert any(
+            "aggregates.json" in p for p in fetch.compare_manifest(expected, self.observed())
+        )
+
+    def test_a_missing_manifest_field_is_caught(self) -> None:
+        expected = self.observed()
+        del expected["derived"]["unevaluated.json"]
+
+        assert any(
+            "unevaluated.json" in p for p in fetch.compare_manifest(expected, self.observed())
+        )
+
+    def test_an_extra_manifest_field_is_caught(self) -> None:
+        expected = self.observed()
+        expected["derived"]["surprise.json"] = "x"
+
+        assert any("surprise.json" in p for p in fetch.compare_manifest(expected, self.observed()))
+
+
+class TestUnevaluatedIdsAreValidated:
+    def canonical(self):
+        return set(INSTANCES)
+
+    def test_a_stray_no_logs_id_is_disqualified(self) -> None:
+        """A sensitivity analysis cannot drop an instance that is not in the set."""
+        art = artifact("sys", INSTANCES[:2], no_logs={"not-in-verified"})
+
+        reason = fetch.disqualify(entry(1, "sys", 0.4), art, self.canonical())
+
+        assert reason and "no_logs" in reason
+
+    def test_a_stray_no_generation_id_is_disqualified(self) -> None:
+        art = artifact("sys", INSTANCES[:2], no_generation={"not-in-verified"})
+
+        reason = fetch.disqualify(entry(1, "sys", 0.4), art, self.canonical())
+
+        assert reason and "no_generation" in reason
+
+    def test_valid_unevaluated_ids_pass(self) -> None:
+        art = artifact("sys", INSTANCES[:2], no_logs={INSTANCES[9]})
+
+        assert fetch.disqualify(entry(1, "sys", 0.4), art, self.canonical()) is None
+
+    @pytest.mark.parametrize("key", ["resolved", "no_generation", "no_logs"])
+    def test_duplicate_raw_ids_are_rejected_before_the_set_hides_them(self, key: str) -> None:
+        document = {"resolved": [], "no_generation": [], "no_logs": []}
+        document[key] = ["a__a-1", "a__a-1"]
+
+        with pytest.raises(fetch.GateFailure, match="duplicate"):
+            fetch.parse_artifact_document(document, fetch.FORMAT_RESOLVED_LIST, "sys")
+
+
+class TestDataclassInvariants:
+    """D2.3, applied to the fetch dataclasses."""
+
+    def test_a_negative_rank_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="rank"):
+            fetch.Entry(rank=0, folder="a", published_rate=1.0, checked=False, date="")
+
+    def test_a_rate_outside_the_percentage_range_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="published_rate"):
+            fetch.Entry(rank=1, folder="a", published_rate=140.0, checked=False, date="")
+
+    def test_a_malformed_digest_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="sha256"):
+            fetch.Artifact(
+                folder="a",
+                split_dir="verified",
+                artifact_format=fetch.FORMAT_RESOLVED_LIST,
+                url="x",
+                sha256="short",
+                resolved=set(),
+            )
+
+    def test_an_id_both_resolved_and_unevaluated_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="both"):
+            fetch.Artifact(
+                folder="a",
+                split_dir="verified",
+                artifact_format=fetch.FORMAT_RESOLVED_LIST,
+                url="x",
+                sha256="0" * 64,
+                resolved={"i1"},
+                no_logs={"i1"},
+            )
+
+
+class TestTraversalAndFailureHandling:
+    def test_traversal_continues_past_many_failures(self, monkeypatch) -> None:
+        """Eleven unusable entries, then twenty good ones. A fixed lookahead would have stopped."""
+        entries = [entry(i + 1, f"bad{i}", 0.4) for i in range(11)]
+        entries += [entry(12 + i, f"good{i}", 0.4) for i in range(20)]
+
+        def stub(folder: str):
+            if folder.startswith("bad"):
+                return None
+            return artifact(folder, INSTANCES[:2])
+
+        monkeypatch.setattr(fetch, "fetch_artifact", stub)
+        chosen, artifacts, substitutions = fetch.select_lazily(entries, set(INSTANCES))
+
+        assert len(chosen) == 20
+        assert len(substitutions) == 11
+        assert all(s["reason"].startswith("no artifact") for s in substitutions)
+
+    def test_a_failed_run_leaves_existing_outputs_untouched(self, tmp_path, monkeypatch) -> None:
+        """Clearing first dirtied a clean clone whenever the network failed."""
+        monkeypatch.setattr(fetch, "DERIVED", tmp_path)
+        monkeypatch.setattr(fetch, "MANIFESTS", tmp_path)
+        monkeypatch.setattr(fetch, "MANIFEST_PATH", tmp_path / "upstream_digests.json")
+        (tmp_path / "upstream_digests.json").write_text("{}", encoding="utf-8")
+        survivor = tmp_path / "aggregates.json"
+        survivor.write_text('{"kept": true}', encoding="utf-8")
+
+        def boom(url: str):
+            raise OSError("network down")
+
+        monkeypatch.setattr(fetch, "fetch_bytes", boom)
+        with pytest.raises(OSError):
+            fetch.main([])
+
+        assert survivor.read_text(encoding="utf-8") == '{"kept": true}'
