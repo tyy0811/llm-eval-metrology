@@ -354,3 +354,165 @@ class TestCoverageIsReported:
 
         assert primary["substitutions"] == []
         assert primary["coverage_rule_fired"] is False
+
+
+class TestMainWiring:
+    """Exercised through `main()`, because a helper can be correct and never called.
+
+    The D2.7 fix was written, tested in isolation, and reported done while `main()` still ran the
+    superseded per-gap calculation. Unit tests on the helper could not see that; only a test that
+    goes through the live path can.
+    """
+
+    def build_inputs(self, tmp_path, resolved: list[int], substitutions=()):
+        """A miniature experiment on disk: labels, aggregates, sidecar, and a matching manifest."""
+        n_items = 500
+        instances = [f"repo__pkg-{i:04d}" for i in range(n_items)]
+        systems = [f"sys{i}" for i in range(len(resolved))]
+
+        rows = ["item_id,system,run,instrument,label"]
+        pairs = []
+        for item in instances:
+            for system, count in zip(systems, resolved, strict=True):
+                label = 1 if int(item.split("-")[1]) < count else 0
+                pairs.append((item, system, label))
+        for item, system, label in sorted(pairs):
+            rows.append(f"{item},{system},0,hidden-tests,{label}")
+        labels = "\n".join(rows) + "\n"
+
+        aggregates = (
+            json.dumps(
+                {
+                    "board": "Verified",
+                    "family_size": len(systems),
+                    "n_items": n_items,
+                    "instrument": "hidden-tests",
+                    "entries": [
+                        {
+                            "rank": index + 1,
+                            "system": system,
+                            "date": "2025-06-03",
+                            "resolved": count,
+                            "published_rate": 100.0 * count / n_items,
+                            "artifact_format": "resolved-id-list",
+                            "split_dir": "verified",
+                            "no_generation": 0,
+                            "no_logs": 0,
+                            "checked": False,
+                            "checked_is_malformed": False,
+                            "checked_raw": None,
+                        }
+                        for index, (system, count) in enumerate(zip(systems, resolved, strict=True))
+                    ],
+                    "substitutions": list(substitutions),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        unevaluated = (
+            json.dumps(
+                {s: {"no_generation": [], "no_logs": []} for s in systems}, indent=2, sort_keys=True
+            )
+            + "\n"
+        )
+
+        derived = tmp_path / "derived"
+        derived.mkdir()
+        (derived / "labels.csv").write_text(labels, encoding="utf-8")
+        (derived / "aggregates.json").write_text(aggregates, encoding="utf-8")
+        (derived / "unevaluated.json").write_text(unevaluated, encoding="utf-8")
+
+        manifests = tmp_path / "manifests"
+        manifests.mkdir()
+        (manifests / "upstream_digests.json").write_text(
+            json.dumps(
+                {
+                    "board": {"commit": "b" * 40, "sha256": "0" * 64},
+                    "artifacts": [
+                        {
+                            "system": systems[0],
+                            "url": "https://x/experiments/a" * 1 + "/y",
+                            "sha256": "0" * 64,
+                        }
+                    ],
+                    "derived": {
+                        name: hashlib.sha256((derived / name).read_bytes()).hexdigest()
+                        for name in ("labels.csv", "aggregates.json", "unevaluated.json")
+                    },
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return derived, manifests
+
+    def point_at(self, tmp_path, monkeypatch, derived, manifests) -> None:
+        monkeypatch.setattr(run, "DERIVED", derived)
+        monkeypatch.setattr(run, "MANIFEST_PATH", manifests / "upstream_digests.json")
+        monkeypatch.setattr(run, "RESULTS", tmp_path / "results")
+
+    def test_the_counterexample_runs_through_main(self, tmp_path, monkeypatch) -> None:
+        """Gaps 40 and 6. The superseded calculation raised "gives 1" here; D2.7 gives 2."""
+        derived, manifests = self.build_inputs(tmp_path, [100, 60, 54])
+        self.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        assert run.main([]) == 0
+
+        results = json.loads((tmp_path / "results" / "results.json").read_text(encoding="utf-8"))
+        assert results["primary"]["separable_count"] == 2
+
+    def test_a_substitution_halts_main_before_any_analysis(self, tmp_path, monkeypatch) -> None:
+        derived, manifests = self.build_inputs(
+            tmp_path, [100, 60, 54], substitutions=[{"rank": 4, "reason": "no artifact"}]
+        )
+        self.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        with pytest.raises(run.RunFailure, match="coverage rule fired"):
+            run.main([])
+
+        assert not (tmp_path / "results").exists()
+
+    def test_a_stale_input_halts_main(self, tmp_path, monkeypatch) -> None:
+        derived, manifests = self.build_inputs(tmp_path, [100, 60, 54])
+        (derived / "labels.csv").write_text("tampered\n", encoding="utf-8")
+        self.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        with pytest.raises(run.RunFailure, match="labels.csv"):
+            run.main([])
+
+
+class TestFamilyCardProvenance:
+    """D1.11: the headline derives from the board, so the family card must name the board."""
+
+    def family_card(self) -> dict:
+        return json.loads((EXPERIMENT / "results" / "cards.json").read_text(encoding="utf-8"))[
+            "family"
+        ]
+
+    def test_the_headline_source_is_the_leaderboard(self) -> None:
+        provenance = self.family_card()["provenance"]
+
+        assert provenance["source"] == "SWE-bench/swe-bench.github.io"
+        assert provenance["pinned_revision"].startswith("7c4289f")
+
+    def test_the_observed_figures_name_the_artifact_source(self) -> None:
+        """The card also shows resolved counts, which do read per-instance data."""
+        provenance = self.family_card()["provenance"]
+
+        assert provenance["secondary_source"] == "SWE-bench/experiments"
+        assert provenance["secondary_revision"].startswith("2f15350")
+
+    def test_d4_does_not_qualify_the_headline(self) -> None:
+        disclosure = self.family_card()["family_finding"]["disclosure"]
+
+        assert disclosure["applies_to_headline"] == []
+        assert "D4 harness comparability" in disclosure["applies_to_secondary"]
+
+    def test_pair_cards_still_name_the_artifact_source_alone(self) -> None:
+        cards = json.loads((EXPERIMENT / "results" / "cards.json").read_text(encoding="utf-8"))
+
+        for card in cards["pairs"].values():
+            assert card["provenance"]["source"] == "SWE-bench/experiments"
+            assert card["provenance"]["secondary_source"] is None

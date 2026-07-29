@@ -55,8 +55,10 @@
         "D4 harness comparability"
       ],
       "fetch_date": "2026-07-29",
-      "pinned_revision": "2f15350cd32becc4569e0d826361048555b605c0",
-      "source": "SWE-bench/experiments"
+      "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+      "secondary_revision": "2f15350cd32becc4569e0d826361048555b605c0",
+      "secondary_source": "SWE-bench/experiments",
+      "source": "SWE-bench/swe-bench.github.io"
     }
   },
   "pairs": {
@@ -85,6 +87,8 @@
         ],
         "fetch_date": "2026-07-29",
         "pinned_revision": "2f15350cd32becc4569e0d826361048555b605c0",
+        "secondary_revision": null,
+        "secondary_source": null,
         "source": "SWE-bench/experiments"
       },
       "ruler": {
@@ -135,6 +139,8 @@
         ],
         "fetch_date": "2026-07-29",
         "pinned_revision": "2f15350cd32becc4569e0d826361048555b605c0",
+        "secondary_revision": null,
+        "secondary_source": null,
         "source": "SWE-bench/experiments"
       },
       "ruler": {

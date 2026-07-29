@@ -263,6 +263,14 @@ def render_family_card(card: dict) -> str:
         ("fetched", card["provenance"]["fetch_date"]),
         ("headline caveats", ", ".join(finding["disclosure"]["applies_to_headline"]) or "none"),
     ]
+    if card["provenance"].get("secondary_source"):
+        seal.append(
+            (
+                "observed figures from",
+                f"{card['provenance']['secondary_source']} "
+                f"{card['provenance']['secondary_revision']}",
+            )
+        )
 
     floor_label = limit["floor_label"].split(",")[0]
     return (

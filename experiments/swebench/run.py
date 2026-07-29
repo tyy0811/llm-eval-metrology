@@ -70,6 +70,11 @@ HARNESS_FIX_BOUNDARY = "2024-04-15"
 # and dataset revisions; a card that says `SWE-bench/experiments` must show this one.
 ARTIFACT_SOURCE = "SWE-bench/experiments"
 
+# D1.11: the resolving-power headline derives from the published board alone, so the family card
+# names the board. The observed counts on that card do read per-instance data, which is why the
+# card also names the artifact source as its secondary.
+BOARD_SOURCE = "SWE-bench/swe-bench.github.io"
+
 # D0.9 forbids ambient state in result files, and D1.7 requires a fetch date on every card.
 # A committed constant satisfies both: it is a real date and it is an input, not something the
 # run observes. It changes only when the pinned revisions above change.
@@ -307,6 +312,17 @@ def main(argv: list[str] | None = None) -> int:
         fetch_date=CANONICAL_FETCH_DATE,
         deviations=("D4 harness comparability",),
     )
+    # The family headline comes from the board, not the artifacts. D4 stays on the card because
+    # it qualifies the observed counts shown for contrast, and the finding's disclosure block
+    # already records that it does not touch the headline.
+    family_provenance = Provenance(
+        source=BOARD_SOURCE,
+        pinned_revision=manifest["board"]["commit"],
+        fetch_date=CANONICAL_FETCH_DATE,
+        deviations=("D4 harness comparability",),
+        secondary_source=ARTIFACT_SOURCE,
+        secondary_revision=artifact_revision,
+    )
 
     members = []
     for a, b in adjacent_pairs(entries):
@@ -327,18 +343,14 @@ def main(argv: list[str] | None = None) -> int:
         instrument=INSTRUMENT,
         alpha=ALPHA,
         provenance=provenance,
+        family_provenance=family_provenance,
         secondary_family_size=SECONDARY_FAMILY_SIZE,
     )
     print(f"  Holm over {family.n_tests} adjacent pairs at alpha {ALPHA}")
 
-    # The analytic expectation from D7, asserted rather than trusted.
-    gaps = [abs(m.net_edge) for m in family.members]
-    expected_separable = sum(1 for gap in gaps if p_value_floor(gap) <= family.first_critical)
-    if family.separable_count != expected_separable:
-        raise RunFailure(
-            f"separable count {family.separable_count} contradicts the gap floors, which give "
-            f"{expected_separable}; the engine and the derivation disagree"
-        )
+    # PREREG D7 and D1, checked through the helper so the live path and the tested path are
+    # the same path. Leaving an inline copy here once meant the tested version was dead code.
+    check_analytic_expectation(family, aggregates)
 
     pairs = []
     for index, (member, counts) in enumerate(zip(family.members, members, strict=True)):

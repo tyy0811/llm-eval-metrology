@@ -106,6 +106,8 @@ class Provenance:
     pinned_revision: str
     fetch_date: str
     deviations: tuple[str, ...] = ()
+    secondary_source: str | None = None
+    secondary_revision: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.source, "source")
@@ -113,6 +115,15 @@ class Provenance:
         _require_text(self.fetch_date, "fetch_date")
         for entry in self.deviations:
             _require_text(entry, "deviation")
+        secondary = (self.secondary_source, self.secondary_revision)
+        if any(x is not None for x in secondary) and not all(x is not None for x in secondary):
+            raise ValueError(
+                "secondary_source and secondary_revision are present together or absent together"
+            )
+        for name in ("secondary_source", "secondary_revision"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_text(value, name)
 
     def as_json(self) -> dict:
         return {
@@ -120,6 +131,8 @@ class Provenance:
             "pinned_revision": self.pinned_revision,
             "fetch_date": self.fetch_date,
             "deviations": list(self.deviations),
+            "secondary_source": self.secondary_source,
+            "secondary_revision": self.secondary_revision,
         }
 
 
@@ -367,6 +380,7 @@ def build_family_report(
     instrument: str,
     alpha: float,
     provenance: Provenance,
+    family_provenance: Provenance | None = None,
     secondary_family_size: int | None = None,
     mde_alpha: float = REGISTERED_MDE_ALPHA,
 ) -> FamilyReport:
@@ -375,6 +389,11 @@ def build_family_report(
     Members reach `holm` as ordered `(name, p)` tuples rather than a mapping, so duplicate names
     trip its guard instead of collapsing silently. A collapsed duplicate previously produced two
     members against one rejection flag, handing one pair another pair's verdict.
+
+    `family_provenance` exists because a family card and its pair cards can legitimately have
+    different sources. Under D1.11 the resolving-power headline derives from the published board
+    alone, while the pair cards' discordance counts come from the per-instance artifacts. One
+    provenance for both would name the wrong source on whichever card it did not describe.
 
     Verdicts come from Holm's own step-down decision. Holm loosens the bar after each rejection,
     so only the smallest p-value faces `alpha / m`; testing every member against that value is
@@ -427,7 +446,7 @@ def build_family_report(
         separable=tuple(best_case_by_name[item.name].rejected for item in members),
         secondary_family_size=secondary_family_size,
         secondary_gap_floor=secondary_floor,
-        provenance=provenance,
+        provenance=family_provenance or provenance,
     )
 
 
