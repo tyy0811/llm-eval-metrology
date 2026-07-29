@@ -346,12 +346,16 @@ class TestVerdictDispatch:
         assert "is-open" in rendered
         assert "is-resolved" not in rendered
 
-    def test_equivalent_is_refused_rather_than_rendered_as_unresolved(self) -> None:
-        """TOST fields do not exist yet, so rendering it would state something false."""
+    def test_equivalent_is_refused_with_the_tost_message(self) -> None:
+        """Matching on EQUIVALENT alone passed against the wrong error entirely.
+
+        The verdict-versus-rule invariant fired first and reported a contradiction, which made
+        the intended TOST branch unreachable while the test still went green.
+        """
         card = pair_with(43)
         card["verdict"] = "EQUIVALENT"
 
-        with pytest.raises(ValueError, match="EQUIVALENT"):
+        with pytest.raises(ValueError, match="requires TOST"):
             render_card(card)
 
 
@@ -498,3 +502,40 @@ class TestFamilyCrossFieldInvariants:
         )
 
         assert render_card(family_card_json(family))
+
+
+class TestDecisionRuleDispatch:
+    def altered(self, **changes):
+        import copy
+
+        card = copy.deepcopy(pair_with(43))
+        card["test"].update(changes)
+        return card
+
+    def test_an_unknown_decision_rule_is_rejected(self) -> None:
+        """Anything but the Holm string fell through to the raw-p branch and was displayed."""
+        with pytest.raises(ValueError, match="decision_rule"):
+            render_card(self.altered(decision_rule="bananas"))
+
+    def test_the_holm_rule_requires_an_adjusted_p_value(self) -> None:
+        with pytest.raises(ValueError, match="adjusted"):
+            render_card(self.altered(adjusted_p_value=None))
+
+    def test_the_raw_rule_must_not_carry_an_adjusted_p_value(self) -> None:
+        with pytest.raises(ValueError, match="adjusted"):
+            render_card(self.altered(decision_rule="p <= threshold"))
+
+    def test_a_standalone_card_uses_the_raw_rule_cleanly(self) -> None:
+        from metrology.reporting import build_pair_report
+
+        standalone = build_pair_report(
+            PairCounts(name="solo", system_a="a", system_b="b", n01=0, n10=40, n_items=500),
+            instrument="hidden-tests",
+            threshold=0.05,
+            provenance=PROVENANCE,
+        )
+        card = pair_card_json(standalone)
+
+        assert card["test"]["decision_rule"] == "p <= threshold"
+        assert card["test"]["adjusted_p_value"] is None
+        assert render_card(card)

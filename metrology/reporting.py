@@ -59,6 +59,12 @@ VERDICTS = (VERDICT_RESOLVED, VERDICT_NOT_RESOLVED, VERDICT_EQUIVALENT)
 CARD_PAIR = "pair_verdict"
 CARD_FAMILY = "family_summary"
 
+#: The only two decision rules a pair card may display. An unrecognized string previously fell
+#: through to the raw-p branch, so the verdict was checked against a rule the card did not show.
+RULE_RAW = "p <= threshold"
+RULE_HOLM = "holm-adjusted p <= alpha"
+DECISION_RULES = (RULE_RAW, RULE_HOLM)
+
 #: PREREG section 5 registers the MDE at alpha 0.05 two-sided, power 0.80. Deliberately not the
 #: multiplicity-corrected threshold: the MDE describes the benchmark, not one family within it.
 REGISTERED_MDE_ALPHA = 0.05
@@ -178,7 +184,7 @@ class PairReport:
 
         if self.adjusted_p_value is None:
             expected = VERDICT_RESOLVED if self.p_value <= self.threshold else VERDICT_NOT_RESOLVED
-            rule = "p <= threshold"
+            rule = RULE_RAW
         else:
             _require_probability(self.adjusted_p_value, "adjusted_p_value")
             if self.alpha is None:
@@ -187,7 +193,7 @@ class PairReport:
             expected = (
                 VERDICT_RESOLVED if self.adjusted_p_value <= self.alpha else VERDICT_NOT_RESOLVED
             )
-            rule = "holm-adjusted p <= alpha"
+            rule = RULE_HOLM
 
         if self.verdict != expected:
             raise ValueError(
@@ -205,9 +211,7 @@ class PairReport:
 
     @property
     def decision_rule(self) -> str:
-        if self.adjusted_p_value is not None:
-            return "holm-adjusted p <= alpha"
-        return "p <= threshold"
+        return RULE_HOLM if self.adjusted_p_value is not None else RULE_RAW
 
 
 @dataclass(frozen=True)
@@ -736,13 +740,31 @@ def _check_pair_invariants(card: dict) -> None:
             "unattainable result must carry neither"
         )
 
-    if test["decision_rule"] == "holm-adjusted p <= alpha":
+    if card["verdict"] == VERDICT_EQUIVALENT:
+        raise ValueError(
+            "cannot render an EQUIVALENT verdict: it requires TOST at a declared band, which "
+            "arrives in Phase 5. Rendering it now would show the NOT RESOLVED reading, which "
+            "states something false about the comparison."
+        )
+
+    rule = test["decision_rule"]
+    if rule not in DECISION_RULES:
+        raise ValueError(
+            f"test.decision_rule must be one of {DECISION_RULES}, got {rule!r}; an unrecognized "
+            "rule would be displayed while the verdict was checked against a different one"
+        )
+    if rule == RULE_HOLM:
         if test["adjusted_p_value"] is None:
             raise ValueError(
                 "the decision rule names an adjusted p-value but adjusted_p_value is null"
             )
         holds = test["adjusted_p_value"] <= test["alpha"]
     else:
+        if test["adjusted_p_value"] is not None:
+            raise ValueError(
+                f"decision rule {RULE_RAW!r} carries an adjusted p-value; a corrected card must "
+                f"display {RULE_HOLM!r} instead"
+            )
         holds = test["p_value"] <= test["alpha"]
     expected_verdict = VERDICT_RESOLVED if holds else VERDICT_NOT_RESOLVED
     if card["verdict"] != expected_verdict:

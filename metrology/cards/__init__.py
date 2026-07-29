@@ -150,13 +150,8 @@ def render_pair_card(card: dict) -> str:
     slug = html_id(comparison["name"])
     label = escape(comparison["name"])
 
-    if card["verdict"] == "EQUIVALENT":
-        raise ValueError(
-            "cannot render an EQUIVALENT verdict: it requires TOST at a declared band, which "
-            "arrives in Phase 5. Rendering it now would emit the NOT RESOLVED reading, which "
-            "states something false about the comparison."
-        )
-
+    # EQUIVALENT is refused by validate_card above, with the TOST message, so only the two
+    # renderable verdicts reach here.
     rail = "is-resolved" if card["verdict"] == "RESOLVED" else "is-open"
     if card["verdict"] == "RESOLVED":
         reading = (
