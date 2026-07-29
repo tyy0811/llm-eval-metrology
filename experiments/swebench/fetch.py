@@ -2,19 +2,21 @@
 """T3.1: fetch the pinned upstream artifacts and derive Experiment 1's label table.
 
 **Nothing upstream is redistributed.** Under `docs/DECISIONS.md` D1.4 this repo ships a
-deterministic fetch-and-derive pipeline plus checksums of what it must produce. The derived table
-is written to `derived/` and left untracked; what is committed is this script, the digests of
-every upstream file consumed, the expected checksums of the derived table, and de minimis
-aggregates a reader can use to sanity-check the headline.
+deterministic fetch-and-derive pipeline plus checksums of what it must produce. Derived files go
+to `derived/` and are untracked; what is committed is this script, the digests of every upstream
+file consumed, the expected checksums of the derived files, and de minimis aggregates.
 
-**Gate 0 comes before parsing.** The published board is fetched whole and its raw bytes are
-verified against the sha256 recorded in `docs/recon_swebench.md`. The pre-registration defines
-adjacency by the array order in that exact file, and the coverage rule needs the entries below
-rank 20 if a substitution fires, so the file is the input rather than the recon note's summary of
-it. Verifying before parsing turns "the board at that revision" from a trusted statement into a
-checked one.
+**The committed manifest is an input, not an output.** A normal run compares every digest it
+observes against `manifests/upstream_digests.json` and stops on any mismatch. Writing that file
+requires `--bootstrap`, because a fetcher that overwrites its own expected checksums with whatever
+it just saw cannot detect upstream moving: it would exit zero and quietly redefine "expected".
 
-Gates 1 to 4 are the pre-registration's integrity gates and run before any table is written.
+**Gate 0 comes before parsing.** The published board is fetched whole and its raw bytes verified
+against the digest recorded in `docs/recon_swebench.md`. The pre-registration defines adjacency by
+the array order in that exact file, and the coverage rule needs entries below rank 20 if a
+substitution fires, so the file is the input rather than a summary of it.
+
+Gates 1 to 4 are the pre-registration's integrity gates and run before anything is written.
 
 Network access is required, which is the trade D1.4 records: no offline reproduction, in exchange
 for redistributing nothing and failing loudly when upstream moves.
@@ -27,6 +29,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -36,9 +39,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DERIVED = HERE / "derived"
 MANIFESTS = HERE / "manifests"
+MANIFEST_PATH = MANIFESTS / "upstream_digests.json"
 
-# Pinned in docs/recon_swebench.md. Changing any of these is a plan-level act: it changes what
-# "the board" and "the artifacts" mean, and every committed checksum below becomes stale.
+# Pinned in docs/recon_swebench.md. Changing any of these changes what "the board" and "the
+# artifacts" mean, and every committed checksum becomes stale.
 BOARD_COMMIT = "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114"
 BOARD_URL = (
     "https://raw.githubusercontent.com/SWE-bench/swe-bench.github.io/"
@@ -62,6 +66,11 @@ N_TOP = 20
 INSTRUMENT = "hidden-tests"
 EXPECTED_INSTANCES = 500
 
+FORMAT_RESOLVED_LIST = "resolved-id-list"
+FORMAT_INSTANCE_MAP = "per-instance-map"
+
+LABEL_COLUMNS = ("item_id", "system", "run", "instrument", "label")
+
 
 class GateFailure(RuntimeError):
     """An integrity gate did not hold. The run stops rather than reporting around it."""
@@ -80,8 +89,7 @@ class Entry:
     @property
     def implied_resolved(self) -> int:
         """The resolved count the published rate implies, since one instance is 0.2 percent."""
-        exact = self.published_rate * EXPECTED_INSTANCES / 100.0
-        return round(exact)
+        return round(self.published_rate * EXPECTED_INSTANCES / 100.0)
 
     @property
     def rate_is_exact(self) -> bool:
@@ -91,7 +99,13 @@ class Entry:
 
 @dataclass
 class Artifact:
-    """A fetched per-entry artifact, normalized to resolved instance IDs."""
+    """A fetched per-entry artifact, normalized to resolved instance IDs.
+
+    `no_generation` and `no_logs` keep their **identities**, not just counts. PREREG section 3
+    registers a pairwise-drop sensitivity analysis on `no_logs` instances, and a count cannot be
+    dropped from a comparison. Discarding the ids would force T3.2 to re-fetch outside this
+    derivation boundary, which is where reproducibility leaks.
+    """
 
     folder: str
     split_dir: str
@@ -99,9 +113,13 @@ class Artifact:
     url: str
     sha256: str
     resolved: set[str]
-    no_generation: int = 0
-    no_logs: int = 0
+    no_generation: set[str] = field(default_factory=set)
+    no_logs: set[str] = field(default_factory=set)
     covered: set[str] = field(default_factory=set)
+
+
+def sha256(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
 
 
 def fetch_bytes(url: str) -> bytes | None:
@@ -114,30 +132,22 @@ def fetch_bytes(url: str) -> bytes | None:
         raise
 
 
-def sha256(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
+# --------------------------------------------------------------------------------------------
+# Pure parsing and gates. No network, so the tests can exercise every branch.
+# --------------------------------------------------------------------------------------------
 
 
-def gate_0_board() -> tuple[list, str]:
-    """Fetch the published board whole and verify its bytes before parsing them."""
-    payload = fetch_bytes(BOARD_URL)
-    if payload is None:
-        raise GateFailure(f"board not found at the pinned commit: {BOARD_URL}")
-
-    digest = sha256(payload)
-    if digest != BOARD_SHA256:
-        raise GateFailure(
-            "gate 0: the pinned board does not match its recorded digest.\n"
-            f"  expected {BOARD_SHA256}\n  observed {digest}\n"
-            "Upstream moved or the recorded digest is wrong. Do not proceed: the "
-            "pre-registration defines adjacency by the array order in this exact file."
-        )
-
-    boards = json.loads(payload.decode("utf-8"))["leaderboards"]
-    board = next((b for b in boards if b["name"] == BOARD_NAME), None)
+def select_board(document: dict, name: str = BOARD_NAME) -> list:
+    boards = document.get("leaderboards")
+    if not isinstance(boards, list):
+        raise GateFailure("gate 0: the board file has no 'leaderboards' array")
+    board = next((b for b in boards if b.get("name") == name), None)
     if board is None:
-        raise GateFailure(f"gate 0: no board named {BOARD_NAME!r} in the pinned file")
-    return board["results"], digest
+        raise GateFailure(f"gate 0: no board named {name!r} in the pinned file")
+    results = board.get("results")
+    if not isinstance(results, list):
+        raise GateFailure(f"gate 0: board {name!r} has no 'results' array")
+    return results
 
 
 def entries_in_published_order(results: list) -> list[Entry]:
@@ -154,123 +164,93 @@ def entries_in_published_order(results: list) -> list[Entry]:
     ]
 
 
-def fetch_artifact(folder: str) -> Artifact | None:
-    """Try both artifact layouts, recording which one answered.
+def parse_artifact_document(document: object, artifact_format: str, folder: str) -> dict:
+    """Normalize either artifact layout, rejecting anything that is not exactly what it claims.
 
-    `evaluation/verified/` enumerates only resolved IDs; `evaluation/bash-only/` maps every
-    instance to a boolean. Recon found 47 of 180 board entries live under the second, so a
-    fetcher written against one layout silently drops a quarter of the board.
+    Format B previously used truthiness, so a `"resolved": "false"` string counted as resolved.
+    Only a real `bool` is accepted, and `isinstance(x, bool)` is checked rather than truthiness
+    because every non-empty string, and every nonzero number, is truthy.
     """
-    candidates = (
-        ("verified", "results/results.json", "resolved-id-list"),
-        ("bash-only", "per_instance_details.json", "per-instance-map"),
-    )
-    for split_dir, suffix, artifact_format in candidates:
-        url = f"{ARTIFACT_BASE}/{split_dir}/{folder}/{suffix}"
-        payload = fetch_bytes(url)
-        if payload is None:
-            continue
-        document = json.loads(payload.decode("utf-8"))
-        if artifact_format == "resolved-id-list":
-            resolved = set(document.get("resolved", []))
-            no_generation = len(document.get("no_generation", []))
-            no_logs = len(document.get("no_logs", []))
-            covered: set[str] = set()
-        else:
-            resolved = {key for key, value in document.items() if value.get("resolved")}
-            no_generation = 0
-            no_logs = 0
-            covered = set(document)
-        return Artifact(
-            folder=folder,
-            split_dir=split_dir,
-            artifact_format=artifact_format,
-            url=url,
-            sha256=sha256(payload),
-            resolved=resolved,
-            no_generation=no_generation,
-            no_logs=no_logs,
-            covered=covered,
+    if not isinstance(document, dict):
+        raise GateFailure(f"{folder}: artifact is not a JSON object")
+
+    if artifact_format == FORMAT_RESOLVED_LIST:
+        out = {}
+        for key in ("resolved", "no_generation", "no_logs"):
+            values = document.get(key, [])
+            if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
+                raise GateFailure(f"{folder}: {key!r} must be a list of instance ids")
+            out[key] = set(values)
+        overlap = out["resolved"] & (out["no_generation"] | out["no_logs"])
+        if overlap:
+            raise GateFailure(
+                f"{folder}: {len(overlap)} id(s) are both resolved and unevaluated, "
+                f"e.g. {sorted(overlap)[:3]}"
+            )
+        return {**out, "covered": set()}
+
+    if artifact_format == FORMAT_INSTANCE_MAP:
+        resolved: set[str] = set()
+        for instance_id, record in document.items():
+            if not isinstance(instance_id, str):
+                raise GateFailure(f"{folder}: instance id {instance_id!r} is not a string")
+            if not isinstance(record, dict):
+                raise GateFailure(f"{folder}: record for {instance_id!r} is not an object")
+            if "resolved" not in record:
+                raise GateFailure(f"{folder}: record for {instance_id!r} has no 'resolved' field")
+            flag = record["resolved"]
+            if not isinstance(flag, bool):
+                raise GateFailure(
+                    f"{folder}: 'resolved' for {instance_id!r} is {flag!r}, which is "
+                    f"{type(flag).__name__} and not a boolean; truthiness would have counted it"
+                )
+            if flag:
+                resolved.add(instance_id)
+        return {
+            "resolved": resolved,
+            "no_generation": set(),
+            "no_logs": set(),
+            "covered": set(document),
+        }
+
+    raise GateFailure(f"{folder}: unknown artifact format {artifact_format!r}")
+
+
+def disqualify(entry: Entry, artifact: Artifact | None, canonical: set[str]) -> str | None:
+    """Why this entry cannot be used, or None if it can. PREREG section 6."""
+    if artifact is None:
+        return "no artifact found under either split directory"
+    if not entry.rate_is_exact:
+        return (
+            f"published rate {entry.published_rate} does not imply an exact count out of "
+            f"{EXPECTED_INSTANCES}"
         )
+    if len(artifact.resolved) != entry.implied_resolved:
+        return (
+            f"gate 3: derived resolved count {len(artifact.resolved)} does not match the "
+            f"published {entry.implied_resolved}"
+        )
+    if not artifact.resolved <= canonical:
+        stray = sorted(artifact.resolved - canonical)[:3]
+        return f"gate 2: resolved ids outside the pinned instance set, e.g. {stray}"
+    if artifact.covered and artifact.covered != canonical:
+        return "gate 2: per-instance map does not cover the pinned instance set exactly"
     return None
-
-
-def fetch_instance_ids() -> tuple[list[str], str]:
-    """The canonical 500 instance IDs, from the pinned dataset revision."""
-    import pyarrow.parquet as pq  # experiments/ may use heavier dependencies than the engine
-
-    payload = fetch_bytes(DATASET_URL)
-    if payload is None:
-        raise GateFailure(f"dataset not found at the pinned revision: {DATASET_URL}")
-    table = pq.read_table(io.BytesIO(payload), columns=["instance_id"])
-    return sorted(table.column("instance_id").to_pylist()), sha256(payload)
-
-
-def select_with_coverage_rule(
-    entries: list[Entry],
-    artifacts: dict[str, Artifact],
-    instance_ids: list[str],
-) -> tuple[list[Entry], list[dict]]:
-    """Walk the published order, substituting downward when an entry fails a gate.
-
-    PREREG section 6: an entry lacking complete artifacts, or failing an integrity gate, is
-    replaced by the next entry down, and every substitution is recorded.
-    """
-    canonical = set(instance_ids)
-    chosen: list[Entry] = []
-    substitutions: list[dict] = []
-
-    for entry in entries:
-        if len(chosen) == N_TOP:
-            break
-        reason = None
-        artifact = artifacts.get(entry.folder)
-        if artifact is None:
-            reason = "no artifact found under either split directory"
-        elif not entry.rate_is_exact:
-            reason = (
-                f"published rate {entry.published_rate} does not imply an exact count out of "
-                f"{EXPECTED_INSTANCES}"
-            )
-        elif len(artifact.resolved) != entry.implied_resolved:
-            reason = (
-                f"gate 3: derived resolved count {len(artifact.resolved)} does not match the "
-                f"published {entry.implied_resolved}"
-            )
-        elif not artifact.resolved <= canonical:
-            stray = sorted(artifact.resolved - canonical)[:3]
-            reason = f"gate 2: resolved ids outside the pinned instance set, e.g. {stray}"
-        elif artifact.covered and set(artifact.covered) != canonical:
-            reason = "gate 2: per-instance map does not cover the pinned instance set exactly"
-
-        if reason is None:
-            chosen.append(entry)
-        else:
-            substitutions.append({"rank": entry.rank, "folder": entry.folder, "reason": reason})
-
-    if len(chosen) < N_TOP:
-        raise GateFailure(
-            f"only {len(chosen)} of {N_TOP} entries cleared the coverage rule; the board does "
-            "not support the registered family size"
-        )
-    return chosen, substitutions
 
 
 def build_rows(chosen: list[Entry], artifacts: dict[str, Artifact], instance_ids: list[str]):
     """Long-format rows, per PLAN.md section 4. Sorted for byte-stability."""
-    rows = []
-    for entry in chosen:
-        resolved = artifacts[entry.folder].resolved
-        for instance_id in instance_ids:
-            rows.append(
-                {
-                    "item_id": instance_id,
-                    "system": entry.folder,
-                    "run": 0,
-                    "instrument": INSTRUMENT,
-                    "label": 1 if instance_id in resolved else 0,
-                }
-            )
+    rows = [
+        {
+            "item_id": instance_id,
+            "system": entry.folder,
+            "run": 0,
+            "instrument": INSTRUMENT,
+            "label": 1 if instance_id in artifacts[entry.folder].resolved else 0,
+        }
+        for entry in chosen
+        for instance_id in instance_ids
+    ]
     rows.sort(key=lambda row: (row["item_id"], row["system"], row["run"], row["instrument"]))
     return rows
 
@@ -278,9 +258,12 @@ def build_rows(chosen: list[Entry], artifacts: dict[str, Artifact], instance_ids
 def run_gates(chosen: list[Entry], artifacts, rows, instance_ids: list[str]) -> None:
     """PREREG section 4, gates 1 to 4. Any failure stops the run."""
     canonical = set(instance_ids)
+    by_system: dict[str, list] = {}
+    for row in rows:
+        by_system.setdefault(row["system"], []).append(row)
 
     for entry in chosen:
-        labels = [row for row in rows if row["system"] == entry.folder]
+        labels = by_system.get(entry.folder, [])
         if len(labels) != EXPECTED_INSTANCES:
             raise GateFailure(
                 f"gate 1: {entry.folder} has {len(labels)} labels, expected {EXPECTED_INSTANCES}"
@@ -299,12 +282,178 @@ def run_gates(chosen: list[Entry], artifacts, rows, instance_ids: list[str]) -> 
         raise GateFailure(f"gate 4: {len(rows) - len(keys)} duplicate rows on the uniqueness key")
 
 
+def rows_to_csv(rows: list[dict]) -> str:
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=list(LABEL_COLUMNS), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue()
+
+
+def canonical_json(payload: object) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def compare_manifest(expected: dict, observed: dict) -> list[str]:
+    """Every digest the committed manifest declares must match what this run saw."""
+    problems = []
+    for section in ("board", "dataset"):
+        want = expected.get(section, {}).get("sha256")
+        got = observed[section]["sha256"]
+        if want != got:
+            problems.append(f"{section}: expected {want}, observed {got}")
+
+    want_artifacts = {a["system"]: a["sha256"] for a in expected.get("artifacts", [])}
+    got_artifacts = {a["system"]: a["sha256"] for a in observed["artifacts"]}
+    if set(want_artifacts) != set(got_artifacts):
+        missing = sorted(set(want_artifacts) ^ set(got_artifacts))[:3]
+        problems.append(f"artifacts: selected systems differ, e.g. {missing}")
+    for system, want in want_artifacts.items():
+        got = got_artifacts.get(system)
+        if got is not None and want != got:
+            problems.append(f"artifact {system}: expected {want}, observed {got}")
+
+    for name, want in expected.get("derived", {}).items():
+        if name == "rows":
+            continue
+        got = observed["derived"].get(name)
+        if want != got:
+            problems.append(f"derived {name}: expected {want}, observed {got}")
+    return problems
+
+
+# --------------------------------------------------------------------------------------------
+# Network I/O
+# --------------------------------------------------------------------------------------------
+
+
+def gate_0_board() -> tuple[list, str]:
+    payload = fetch_bytes(BOARD_URL)
+    if payload is None:
+        raise GateFailure(f"board not found at the pinned commit: {BOARD_URL}")
+    digest = sha256(payload)
+    if digest != BOARD_SHA256:
+        raise GateFailure(
+            "gate 0: the pinned board does not match its recorded digest.\n"
+            f"  expected {BOARD_SHA256}\n  observed {digest}\n"
+            "Upstream moved or the recorded digest is wrong. Do not proceed: the "
+            "pre-registration defines adjacency by the array order in this exact file."
+        )
+    return select_board(json.loads(payload.decode("utf-8"))), digest
+
+
+def fetch_artifact(folder: str) -> Artifact | None:
+    """Try both artifact layouts, recording which one answered."""
+    candidates = (
+        ("verified", "results/results.json", FORMAT_RESOLVED_LIST),
+        ("bash-only", "per_instance_details.json", FORMAT_INSTANCE_MAP),
+    )
+    for split_dir, suffix, artifact_format in candidates:
+        url = f"{ARTIFACT_BASE}/{split_dir}/{folder}/{suffix}"
+        payload = fetch_bytes(url)
+        if payload is None:
+            continue
+        parsed = parse_artifact_document(
+            json.loads(payload.decode("utf-8")), artifact_format, folder
+        )
+        return Artifact(
+            folder=folder,
+            split_dir=split_dir,
+            artifact_format=artifact_format,
+            url=url,
+            sha256=sha256(payload),
+            **parsed,
+        )
+    return None
+
+
+def fetch_instance_ids() -> tuple[list[str], str]:
+    """The canonical 500 instance IDs, from the pinned dataset revision.
+
+    Downloads the complete parquet shard, which is the only granularity the store offers, then
+    reads the `instance_id` column from it. No other column is used, and nothing is retained.
+    """
+    import pyarrow.parquet as pq  # experiments/ may use heavier dependencies than the engine
+
+    payload = fetch_bytes(DATASET_URL)
+    if payload is None:
+        raise GateFailure(f"dataset not found at the pinned revision: {DATASET_URL}")
+    table = pq.read_table(io.BytesIO(payload), columns=["instance_id"])
+    return sorted(table.column("instance_id").to_pylist()), sha256(payload)
+
+
+def select_lazily(entries: list[Entry], canonical: set[str]) -> tuple[list, dict, list]:
+    """Walk the published order fetching only as far as the coverage rule needs.
+
+    Replaces a fixed lookahead, which was an arbitrary bound on how far substitution could reach.
+    """
+    chosen: list[Entry] = []
+    artifacts: dict[str, Artifact] = {}
+    substitutions: list[dict] = []
+
+    for entry in entries:
+        if len(chosen) == N_TOP:
+            break
+        if not entry.folder:
+            substitutions.append(
+                {"rank": entry.rank, "folder": "", "reason": "board entry names no folder"}
+            )
+            continue
+        artifact = fetch_artifact(entry.folder)
+        reason = disqualify(entry, artifact, canonical)
+        if reason is None:
+            artifacts[entry.folder] = artifact
+            chosen.append(entry)
+        else:
+            substitutions.append({"rank": entry.rank, "folder": entry.folder, "reason": reason})
+
+    if len(chosen) < N_TOP:
+        raise GateFailure(
+            f"only {len(chosen)} of {N_TOP} entries cleared the coverage rule after exhausting "
+            "the board; it does not support the registered family size"
+        )
+    return chosen, artifacts, substitutions
+
+
+def clear_outputs() -> None:
+    """Remove derived files before a run.
+
+    A failed fetch previously left the previous `labels.csv` in place, where a later analysis
+    would read it as current. Derived files are regenerable, so the safe state after a failure
+    is none of them rather than stale ones.
+    """
+    if DERIVED.exists():
+        for path in sorted(DERIVED.iterdir()):
+            if path.is_file():
+                path.unlink()
+
+
+def atomic_write(path: Path, text: str) -> str:
+    """Write via a temporary file and rename, so a partial write is never readable as complete."""
+    temporary = path.with_name(path.name + ".partial")
+    temporary.write_text(text, encoding="utf-8")
+    os.replace(temporary, path)
+    return sha256(text.encode("utf-8"))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="write the manifest instead of checking against it; required on first run",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.bootstrap and not MANIFEST_PATH.exists():
+        raise GateFailure(
+            f"no committed manifest at {MANIFEST_PATH}. A normal run checks against it; use "
+            "--bootstrap to create one, then review and commit it."
+        )
 
     DERIVED.mkdir(exist_ok=True)
     MANIFESTS.mkdir(exist_ok=True)
+    clear_outputs()
 
     print("gate 0: verifying the published board before parsing it")
     results, board_digest = gate_0_board()
@@ -316,18 +465,8 @@ def main(argv: list[str] | None = None) -> int:
         raise GateFailure(f"expected {EXPECTED_INSTANCES} instances, got {len(instance_ids)}")
     print(f"  instance set: {len(instance_ids)} ids at the pinned dataset revision")
 
-    print("fetching per-entry artifacts, walking the published order")
-    artifacts: dict[str, Artifact] = {}
-    for entry in entries:
-        if len(artifacts) >= N_TOP + 10:  # enough headroom for the coverage rule
-            break
-        if not entry.folder:
-            continue
-        artifact = fetch_artifact(entry.folder)
-        if artifact is not None:
-            artifacts[entry.folder] = artifact
-
-    chosen, substitutions = select_with_coverage_rule(entries, artifacts, instance_ids)
+    print("walking the published order, fetching only as far as the coverage rule needs")
+    chosen, artifacts, substitutions = select_lazily(entries, set(instance_ids))
     print(f"  {len(chosen)} entries selected, {len(substitutions)} substitution(s)")
     for record in substitutions:
         print(f"    rank {record['rank']} {record['folder']}: {record['reason']}")
@@ -336,40 +475,40 @@ def main(argv: list[str] | None = None) -> int:
     run_gates(chosen, artifacts, rows, instance_ids)
     print(f"  gates 1 to 4 passed on {len(rows)} rows")
 
-    table_path = DERIVED / "labels.csv"
-    with open(table_path, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=["item_id", "system", "run", "instrument", "label"]
-        )
-        writer.writeheader()
-        writer.writerows(rows)
-    table_digest = sha256(table_path.read_bytes())
-
-    aggregates = {
-        "board": BOARD_NAME,
-        "family_size": len(chosen),
-        "n_items": EXPECTED_INSTANCES,
-        "instrument": INSTRUMENT,
-        "entries": [
-            {
-                "rank": entry.rank,
-                "system": entry.folder,
-                "published_rate": entry.published_rate,
-                "resolved": entry.implied_resolved,
-                "artifact_format": artifacts[entry.folder].artifact_format,
-                "split_dir": artifacts[entry.folder].split_dir,
-                "no_generation": artifacts[entry.folder].no_generation,
-                "no_logs": artifacts[entry.folder].no_logs,
+    labels_csv = rows_to_csv(rows)
+    unevaluated = canonical_json(
+        {
+            entry.folder: {
+                "no_generation": sorted(artifacts[entry.folder].no_generation),
+                "no_logs": sorted(artifacts[entry.folder].no_logs),
             }
             for entry in chosen
-        ],
-        "substitutions": substitutions,
-    }
-    (DERIVED / "aggregates.json").write_text(
-        json.dumps(aggregates, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        }
+    )
+    aggregates = canonical_json(
+        {
+            "board": BOARD_NAME,
+            "family_size": len(chosen),
+            "n_items": EXPECTED_INSTANCES,
+            "instrument": INSTRUMENT,
+            "entries": [
+                {
+                    "rank": entry.rank,
+                    "system": entry.folder,
+                    "published_rate": entry.published_rate,
+                    "resolved": entry.implied_resolved,
+                    "artifact_format": artifacts[entry.folder].artifact_format,
+                    "split_dir": artifacts[entry.folder].split_dir,
+                    "no_generation": len(artifacts[entry.folder].no_generation),
+                    "no_logs": len(artifacts[entry.folder].no_logs),
+                }
+                for entry in chosen
+            ],
+            "substitutions": substitutions,
+        }
     )
 
-    manifest = {
+    observed = {
         "board": {"url": BOARD_URL, "commit": BOARD_COMMIT, "sha256": board_digest},
         "dataset": {"url": DATASET_URL, "revision": DATASET_REVISION, "sha256": dataset_digest},
         "artifacts": [
@@ -380,14 +519,31 @@ def main(argv: list[str] | None = None) -> int:
             }
             for entry in chosen
         ],
-        "derived": {"labels.csv": table_digest, "rows": len(rows)},
+        "derived": {
+            "labels.csv": sha256(labels_csv.encode("utf-8")),
+            "unevaluated.json": sha256(unevaluated.encode("utf-8")),
+            "rows": len(rows),
+        },
     }
-    (MANIFESTS / "upstream_digests.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
 
-    print(f"  derived table: {len(rows)} rows, sha256 {table_digest[:16]}, untracked")
-    print(f"  manifests written to {MANIFESTS.relative_to(HERE.parent.parent)}")
+    if args.bootstrap:
+        atomic_write(MANIFEST_PATH, canonical_json(observed))
+        print(f"  bootstrapped {MANIFEST_PATH.name}; review and commit it")
+    else:
+        problems = compare_manifest(json.loads(MANIFEST_PATH.read_text(encoding="utf-8")), observed)
+        if problems:
+            raise GateFailure(
+                "the committed manifest does not match this run:\n  "
+                + "\n  ".join(problems)
+                + "\nUpstream moved, or the derivation changed. The manifest is an input; "
+                "re-create it with --bootstrap only after deciding the change is intended."
+            )
+        print("  manifest matched: every upstream and derived digest as committed")
+
+    atomic_write(DERIVED / "labels.csv", labels_csv)
+    atomic_write(DERIVED / "unevaluated.json", unevaluated)
+    atomic_write(DERIVED / "aggregates.json", aggregates)
+    print(f"  wrote {len(rows)} rows plus the unevaluated sidecar, both untracked")
     return 0
 
 

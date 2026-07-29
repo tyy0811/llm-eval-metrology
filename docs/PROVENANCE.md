@@ -70,7 +70,7 @@ whatever the reply is, unless the reply supplies a harness-version record we can
 | Pinned at | revision `c104f840cc67f8b6eec6f759ebc8b2693d585d4a` (modified 2025-02-18) |
 | License status | **No license tag on the dataset.** The SWE-bench harness code repo is MIT, which does not automatically extend to the dataset |
 | Redistributed | **Nothing.** Only the count, 500, and the ID format appear in recon notes |
-| Fetched at run time | Instance IDs only. The task instances, patches, and problem statements are not needed, because Experiment 1 operates on labels |
+| Fetched at run time | The complete parquet shard, which is the only granularity the store offers, from which `fetch.py` reads the `instance_id` column and nothing else. The task instances, patches, and problem statements are downloaded as part of the shard but are never read or retained |
 | Attribution | SWE-bench Verified, cited with the pinned revision |
 
 Note that Experiment 1 needs the ID set purely to validate that every system covers the same 500
