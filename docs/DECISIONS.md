@@ -1001,3 +1001,42 @@ generated and untracked per D1.4 with checksums and de minimis aggregates commit
 `make reproduce` becoming real at T3.5. Two settled constraints carry in: `q` comes from
 `discordance_rate_from_counts` and never from a published gap (D2.5), and the primary result needs
 no upstream artifact at all (PREREG D7).
+
+---
+
+## D3.1 A derived sidecar was committed by accident, and history was rewritten narrowly
+
+**Date:** 2026-07-29
+**Status:** settled
+
+**What happened.** T3.1's corrective pass began preserving the identities of unevaluated
+instances, since the registered pairwise-drop sensitivity cannot drop a count. Those identities
+were written to `derived/unevaluated.json`, which was intended to be untracked like the label
+table. It was not: the ignore rule named `labels.csv` specifically, so a file added later fell
+outside it. 23 per-instance ids were committed, which violates D1.4.
+
+**Why removing it at HEAD was not enough.** The commit that added it stayed an ancestor of `main`,
+so every fresh clone still received the blob. Deleting a file at HEAD stops it being current; it
+does not stop it being distributed.
+
+**Scope of the rewrite.** Only the path `experiments/swebench/derived/unevaluated.json`, and only
+the two commits that carried it. Ancestors were untouched, verified rather than assumed: the
+commits cited in D0.8, D0.10, and D2.8 all resolve unchanged after the rewrite, because they
+predate the file and their trees never contained it. Comparing the rewritten history against the
+pre-rewrite remote showed exactly two commits differing and identical content at HEAD.
+
+**An objection of mine that was wrong.** I initially declined the rewrite on the grounds that it
+would invalidate the commit SHAs cited in committed documents, in a repo whose credibility claim
+is that git history is a deliverable. That reasoning did not survive checking: those commits are
+ancestors of the offending one, and rewriting a commit does not change its ancestors. The cost I
+argued against did not exist.
+
+**What this does not fix.** Existing clones, forks, and any cache or mirror that already pulled
+`main` still carry the blob. A rewrite stops future clones from receiving it and nothing more.
+Recording that limit rather than implying the record is clean.
+
+**The rule that failed, and its replacement.** Naming derived files individually in `.gitignore`
+put the burden on remembering to update it whenever a new output appeared. The rule is now
+deny-by-default with an explicit allowlist, so a new derived file is ignored unless someone
+deliberately permits it, and a test asserts that a hypothetical new derived file would be ignored.
+The de minimis aggregates remain the single allowed exception.
