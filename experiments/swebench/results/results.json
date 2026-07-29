@@ -1,0 +1,827 @@
+{
+  "configuration": {
+    "alpha": 0.05,
+    "bootstrap_level": 0.95,
+    "bootstrap_resamples": 10000,
+    "instrument": "hidden-tests",
+    "master_seed": 20260727
+  },
+  "mde_grid": {
+    "alpha": 0.05,
+    "n_items": 500,
+    "points": [
+      {
+        "discordance_rate": 0.02,
+        "instances": 8.886718750000002,
+        "max_attainable_power": 0.9348081328975868,
+        "status": "attainable"
+      },
+      {
+        "discordance_rate": 0.05,
+        "instances": 14.4683837890625,
+        "max_attainable_power": 0.9999990818191731,
+        "status": "attainable"
+      },
+      {
+        "discordance_rate": 0.1,
+        "instances": 20.336914062500004,
+        "max_attainable_power": 0.9999999999999993,
+        "status": "attainable"
+      },
+      {
+        "discordance_rate": 0.2,
+        "instances": 28.72314453125,
+        "max_attainable_power": 0.9999999999999993,
+        "status": "attainable"
+      },
+      {
+        "discordance_rate": 0.3,
+        "instances": 35.0555419921875,
+        "max_attainable_power": 1.0,
+        "status": "attainable"
+      },
+      {
+        "discordance_rate": 0.5,
+        "instances": 45.074462890625,
+        "max_attainable_power": 1.0,
+        "status": "attainable"
+      }
+    ],
+    "target_power": 0.8
+  },
+  "pairs": [
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.024,
+        "level": 0.95,
+        "low": -0.022,
+        "n_resamples": 10000,
+        "seed": 2026072700,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.072,
+      "mde": {
+        "instances": 17.384765625,
+        "max_attainable_power": 0.9999999999511919,
+        "rate_difference": 0.03476953125,
+        "status": "attainable"
+      },
+      "n01": 18,
+      "n10": 18,
+      "n_discordant": 36,
+      "name": "rank_1_vs_2",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 20,
+      "separable": false,
+      "system_a": "20251215_livesweagent_claude-opus-4-5",
+      "system_b": "20251205_sonar-foundation-agent_claude-opus-4-5",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.004,
+        "high": 0.036,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072701,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.128,
+      "mde": {
+        "instances": 23.003906249999996,
+        "max_attainable_power": 0.9999999999999987,
+        "rate_difference": 0.046007812499999995,
+        "status": "attainable"
+      },
+      "n01": 31,
+      "n10": 33,
+      "n_discordant": 64,
+      "name": "rank_2_vs_3",
+      "net_edge": 2,
+      "p_value": 0.9006532462520331,
+      "required_net_edge_at_observed": 26,
+      "separable": false,
+      "system_a": "20251205_sonar-foundation-agent_claude-opus-4-5",
+      "system_b": "20250928_trae_doubao_seed_code",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.014,
+        "high": 0.046,
+        "level": 0.95,
+        "low": -0.018,
+        "n_resamples": 10000,
+        "seed": 2026072702,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.13,
+      "mde": {
+        "instances": 23.18084716796875,
+        "max_attainable_power": 0.9999999999999994,
+        "rate_difference": 0.0463616943359375,
+        "status": "attainable"
+      },
+      "n01": 29,
+      "n10": 36,
+      "n_discordant": 65,
+      "name": "rank_3_vs_4",
+      "net_edge": 7,
+      "p_value": 0.4570207854105899,
+      "required_net_edge_at_observed": 25,
+      "separable": false,
+      "system_a": "20250928_trae_doubao_seed_code",
+      "system_b": "20251120_livesweagent_gemini-3-pro-preview",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.006,
+        "high": 0.034,
+        "level": 0.95,
+        "low": -0.022,
+        "n_resamples": 10000,
+        "seed": 2026072703,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.106,
+      "mde": {
+        "instances": 20.936035156250004,
+        "max_attainable_power": 0.999999999999999,
+        "rate_difference": 0.04187207031250001,
+        "status": "attainable"
+      },
+      "n01": 25,
+      "n10": 28,
+      "n_discordant": 53,
+      "name": "rank_4_vs_5",
+      "net_edge": 3,
+      "p_value": 0.7838463022094988,
+      "required_net_edge_at_observed": 23,
+      "separable": false,
+      "system_a": "20251120_livesweagent_gemini-3-pro-preview",
+      "system_b": "20250902_atlassian-rovo-dev",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.03,
+        "level": 0.95,
+        "low": -0.03,
+        "n_resamples": 10000,
+        "seed": 2026072704,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.112,
+      "mde": {
+        "instances": 21.52294921875,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.0430458984375,
+        "status": "attainable"
+      },
+      "n01": 28,
+      "n10": 28,
+      "n_discordant": 56,
+      "name": "rank_5_vs_6",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 24,
+      "separable": false,
+      "system_a": "20250902_atlassian-rovo-dev",
+      "system_b": "20250804_epam-ai-run-claude-4-sonnet",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.032,
+        "level": 0.95,
+        "low": -0.032,
+        "n_resamples": 10000,
+        "seed": 2026072705,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.132,
+      "mde": {
+        "instances": 23.360229492187496,
+        "max_attainable_power": 0.9999999999999998,
+        "rate_difference": 0.04672045898437499,
+        "status": "attainable"
+      },
+      "n01": 33,
+      "n10": 33,
+      "n_discordant": 66,
+      "name": "rank_6_vs_7",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 26,
+      "separable": false,
+      "system_a": "20250804_epam-ai-run-claude-4-sonnet",
+      "system_b": "20260217_mini-v2.0.0_claude-4-5-opus-high",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.004,
+        "high": 0.036,
+        "level": 0.95,
+        "low": -0.026,
+        "n_resamples": 10000,
+        "seed": 2026072706,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.128,
+      "mde": {
+        "instances": 23.003906249999996,
+        "max_attainable_power": 0.9999999999999987,
+        "rate_difference": 0.046007812499999995,
+        "status": "attainable"
+      },
+      "n01": 31,
+      "n10": 33,
+      "n_discordant": 64,
+      "name": "rank_7_vs_8",
+      "net_edge": 2,
+      "p_value": 0.9006532462520331,
+      "required_net_edge_at_observed": 26,
+      "separable": false,
+      "system_a": "20260217_mini-v2.0.0_claude-4-5-opus-high",
+      "system_b": "20250819_ACoder",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.006,
+        "high": 0.036,
+        "level": 0.95,
+        "low": -0.026,
+        "n_resamples": 10000,
+        "seed": 2026072707,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.126,
+      "mde": {
+        "instances": 22.8251953125,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.045650390625,
+        "status": "attainable"
+      },
+      "n01": 30,
+      "n10": 33,
+      "n_discordant": 63,
+      "name": "rank_8_vs_9",
+      "net_edge": 3,
+      "p_value": 0.8013064925040662,
+      "required_net_edge_at_observed": 25,
+      "separable": false,
+      "system_a": "20250819_ACoder",
+      "system_b": "20260217_mini-v2.0.0_gemini-3-flash-high",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.03,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072708,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.112,
+      "mde": {
+        "instances": 21.52294921875,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.0430458984375,
+        "status": "attainable"
+      },
+      "n01": 28,
+      "n10": 28,
+      "n_discordant": 56,
+      "name": "rank_9_vs_10",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 24,
+      "separable": false,
+      "system_a": "20260217_mini-v2.0.0_gemini-3-flash-high",
+      "system_b": "20260217_mini-v2.0.0_minimax-2-5-high",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.002,
+        "high": 0.036,
+        "level": 0.95,
+        "low": -0.032,
+        "n_resamples": 10000,
+        "seed": 2026072709,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.15,
+      "mde": {
+        "instances": 24.929809570312504,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.049859619140625006,
+        "status": "attainable"
+      },
+      "n01": 37,
+      "n10": 38,
+      "n_discordant": 75,
+      "name": "rank_10_vs_11",
+      "net_edge": 1,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 27,
+      "separable": false,
+      "system_a": "20260217_mini-v2.0.0_minimax-2-5-high",
+      "system_b": "20250901_warp",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.032,
+        "level": 0.95,
+        "low": -0.032,
+        "n_resamples": 10000,
+        "seed": 2026072710,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.132,
+      "mde": {
+        "instances": 23.360229492187496,
+        "max_attainable_power": 0.9999999999999998,
+        "rate_difference": 0.04672045898437499,
+        "status": "attainable"
+      },
+      "n01": 33,
+      "n10": 33,
+      "n_discordant": 66,
+      "name": "rank_11_vs_12",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 26,
+      "separable": false,
+      "system_a": "20250901_warp",
+      "system_b": "20260217_mini-v2.0.0_claude-4-6-opus",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.004,
+        "high": 0.036,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072711,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.136,
+      "mde": {
+        "instances": 23.711181640625004,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.047422363281250005,
+        "status": "attainable"
+      },
+      "n01": 33,
+      "n10": 35,
+      "n_discordant": 68,
+      "name": "rank_12_vs_13",
+      "net_edge": 2,
+      "p_value": 0.9035973456835125,
+      "required_net_edge_at_observed": 26,
+      "separable": false,
+      "system_a": "20260217_mini-v2.0.0_claude-4-6-opus",
+      "system_b": "20250612_trae",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.004,
+        "high": 0.028,
+        "level": 0.95,
+        "low": -0.02,
+        "n_resamples": 10000,
+        "seed": 2026072712,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.072,
+      "mde": {
+        "instances": 17.384765625,
+        "max_attainable_power": 0.9999999999511919,
+        "rate_difference": 0.03476953125,
+        "status": "attainable"
+      },
+      "n01": 17,
+      "n10": 19,
+      "n_discordant": 36,
+      "name": "rank_13_vs_14",
+      "net_edge": 2,
+      "p_value": 0.8679394004284404,
+      "required_net_edge_at_observed": 20,
+      "separable": false,
+      "system_a": "20250612_trae",
+      "system_b": "20250731_harness_ai",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.028,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072713,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.104,
+      "mde": {
+        "instances": 20.73779296875,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.0414755859375,
+        "status": "attainable"
+      },
+      "n01": 26,
+      "n10": 26,
+      "n_discordant": 52,
+      "name": "rank_14_vs_15",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 24,
+      "separable": false,
+      "system_a": "20250731_harness_ai",
+      "system_b": "20251103_sonar-foundation-agent_claude-sonnet-4-5",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.002,
+        "high": 0.03,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072714,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.114,
+      "mde": {
+        "instances": 21.7159423828125,
+        "max_attainable_power": 0.9999999999999998,
+        "rate_difference": 0.043431884765625,
+        "status": "attainable"
+      },
+      "n01": 28,
+      "n10": 29,
+      "n_discordant": 57,
+      "name": "rank_15_vs_16",
+      "net_edge": 1,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 25,
+      "separable": false,
+      "system_a": "20251103_sonar-foundation-agent_claude-sonnet-4-5",
+      "system_b": "20250720_Lingxi-v1.5_claude-4-sonnet-20250514",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.03,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072715,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.112,
+      "mde": {
+        "instances": 21.52294921875,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.0430458984375,
+        "status": "attainable"
+      },
+      "n01": 28,
+      "n10": 28,
+      "n_discordant": 56,
+      "name": "rank_16_vs_17",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 24,
+      "separable": false,
+      "system_a": "20250720_Lingxi-v1.5_claude-4-sonnet-20250514",
+      "system_b": "20250915_JoyCode",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.002,
+        "high": 0.032,
+        "level": 0.95,
+        "low": -0.028,
+        "n_resamples": 10000,
+        "seed": 2026072716,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.118,
+      "mde": {
+        "instances": 22.092590332031254,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.044185180664062504,
+        "status": "attainable"
+      },
+      "n01": 29,
+      "n10": 30,
+      "n_discordant": 59,
+      "name": "rank_17_vs_18",
+      "net_edge": 1,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 25,
+      "separable": false,
+      "system_a": "20250915_JoyCode",
+      "system_b": "20250603_Refact_Agent_claude-4-sonnet",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.034,
+        "level": 0.95,
+        "low": -0.034,
+        "n_resamples": 10000,
+        "seed": 2026072717,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.148,
+      "mde": {
+        "instances": 24.760009765625,
+        "max_attainable_power": 1.0,
+        "rate_difference": 0.04952001953125,
+        "status": "attainable"
+      },
+      "n01": 37,
+      "n10": 37,
+      "n_discordant": 74,
+      "name": "rank_18_vs_19",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 28,
+      "separable": false,
+      "system_a": "20250603_Refact_Agent_claude-4-sonnet",
+      "system_b": "20251015_Prometheus_v1.2.1_gpt5",
+      "verdict": "NOT RESOLVED"
+    },
+    {
+      "adjusted_p_value": 1.0,
+      "bootstrap": {
+        "estimate": 0.0,
+        "high": 0.034,
+        "level": 0.95,
+        "low": -0.034,
+        "n_resamples": 10000,
+        "seed": 2026072718,
+        "unit": "instance"
+      },
+      "discordance_rate": 0.16,
+      "mde": {
+        "instances": 25.761718750000004,
+        "max_attainable_power": 0.9999999999999998,
+        "rate_difference": 0.051523437500000005,
+        "status": "attainable"
+      },
+      "n01": 40,
+      "n10": 40,
+      "n_discordant": 80,
+      "name": "rank_19_vs_20",
+      "net_edge": 0,
+      "p_value": 1.0,
+      "required_net_edge_at_observed": 28,
+      "separable": false,
+      "system_a": "20251015_Prometheus_v1.2.1_gpt5",
+      "system_b": "20251124_mini-v1.16.0_claude-opus-4-5-20251101",
+      "verdict": "NOT RESOLVED"
+    }
+  ],
+  "primary": {
+    "family_size": 19,
+    "first_critical": 0.002631578947368421,
+    "first_rejection_gap_floor": 10,
+    "largest_observed_gap": 7,
+    "needs_per_instance_data": false,
+    "note": "PREREG D7: the count follows from published resolve rates alone. The per-instance work below characterizes it and cannot overturn it.",
+    "question": "how many adjacent pairs among the top N are statistically separable",
+    "resolved_count": 0,
+    "separability_basis": "Holm applied to per-pair minimum attainable p-values",
+    "separable_count": 0
+  },
+  "secondary": {
+    "harness_straddle": {
+      "boundary": "2024-04-15",
+      "earliest_submission_date": "2025-06-03",
+      "entries_predating_the_fix": 0,
+      "straddling_pairs": []
+    },
+    "no_logs_sensitivity": {
+      "pairs": [
+        {
+          "dropped_instances": 1,
+          "n01": 17,
+          "n10": 18,
+          "n_items": 499,
+          "p_value": 1.0,
+          "rank_a": 1,
+          "rank_b": 2
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 31,
+          "n10": 33,
+          "n_items": 500,
+          "p_value": 0.9006532462520331,
+          "rank_a": 2,
+          "rank_b": 3
+        },
+        {
+          "dropped_instances": 1,
+          "n01": 29,
+          "n10": 35,
+          "n_items": 499,
+          "p_value": 0.5323087760278421,
+          "rank_a": 3,
+          "rank_b": 4
+        },
+        {
+          "dropped_instances": 1,
+          "n01": 24,
+          "n10": 28,
+          "n_items": 499,
+          "p_value": 0.6778086391424605,
+          "rank_a": 4,
+          "rank_b": 5
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 28,
+          "n10": 28,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 5,
+          "rank_b": 6
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 33,
+          "n10": 33,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 6,
+          "rank_b": 7
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 31,
+          "n10": 33,
+          "n_items": 500,
+          "p_value": 0.9006532462520331,
+          "rank_a": 7,
+          "rank_b": 8
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 30,
+          "n10": 33,
+          "n_items": 500,
+          "p_value": 0.8013064925040662,
+          "rank_a": 8,
+          "rank_b": 9
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 28,
+          "n10": 28,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 9,
+          "rank_b": 10
+        },
+        {
+          "dropped_instances": 1,
+          "n01": 37,
+          "n10": 37,
+          "n_items": 499,
+          "p_value": 1.0,
+          "rank_a": 10,
+          "rank_b": 11
+        },
+        {
+          "dropped_instances": 1,
+          "n01": 33,
+          "n10": 33,
+          "n_items": 499,
+          "p_value": 1.0,
+          "rank_a": 11,
+          "rank_b": 12
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 33,
+          "n10": 35,
+          "n_items": 500,
+          "p_value": 0.9035973456835125,
+          "rank_a": 12,
+          "rank_b": 13
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 17,
+          "n10": 19,
+          "n_items": 500,
+          "p_value": 0.8679394004284404,
+          "rank_a": 13,
+          "rank_b": 14
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 26,
+          "n10": 26,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 14,
+          "rank_b": 15
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 28,
+          "n10": 29,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 15,
+          "rank_b": 16
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 28,
+          "n10": 28,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 16,
+          "rank_b": 17
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 29,
+          "n10": 30,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 17,
+          "rank_b": 18
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 37,
+          "n10": 37,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 18,
+          "rank_b": 19
+        },
+        {
+          "dropped_instances": 0,
+          "n01": 40,
+          "n10": 40,
+          "n_items": 500,
+          "p_value": 1.0,
+          "rank_a": 19,
+          "rank_b": 20
+        }
+      ],
+      "rule": "an instance is dropped from a comparison when either side failed to log it",
+      "total_pairs_affected": 5
+    },
+    "non_tied_family": {
+      "first_critical": 0.005,
+      "gap_floor": 9,
+      "rejected": 0,
+      "size": 10
+    }
+  }
+}

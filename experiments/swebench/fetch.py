@@ -558,6 +558,7 @@ def main(argv: list[str] | None = None) -> int:
                 {
                     "rank": entry.rank,
                     "system": entry.folder,
+                    "date": entry.date,
                     "published_rate": entry.published_rate,
                     "resolved": entry.implied_resolved,
                     "artifact_format": artifacts[entry.folder].artifact_format,

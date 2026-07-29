@@ -1,0 +1,162 @@
+{
+  "family": {
+    "card_kind": "family_summary",
+    "family_finding": {
+      "claim_type": "resolving_power",
+      "conditionality": [
+        "integrity gate 3 passes, so derived counts match published rates",
+        "the coverage rule substitutes no entry"
+      ],
+      "criterion": {
+        "alpha": 0.05,
+        "convention": "doubled-tail",
+        "correction": "holm",
+        "statistic": "exact_mcnemar_two_sided",
+        "threshold": 0.002631578947368421
+      },
+      "definitions": {
+        "separable": "the family's Holm procedure could reject this pair under best-case overlaps; not separable is a stronger result than an observed test merely not rejecting"
+      },
+      "disclosure": {
+        "applies_to_headline": [],
+        "applies_to_secondary": [
+          "D4 harness comparability"
+        ]
+      },
+      "headline": {
+        "family_size": 19,
+        "separable_count": 0,
+        "unit": "adjacent_pairs"
+      },
+      "limit": {
+        "first_rejection_gap_floor": 10,
+        "floor_label": "family gateway floor, cleared by the first rejection",
+        "inference": "every adjacent gap sits below the gateway floor of 10, so no pair can open the family and none can separate at any discordance configuration",
+        "observed_extreme": 7,
+        "observed_extreme_label": "largest observed adjacent gap"
+      },
+      "observed": {
+        "decision_rule": "holm-adjusted p <= alpha",
+        "note": "separable asks whether rejection was reachable at all; resolved asks whether the observed test rejected, which is the stronger requirement",
+        "resolved_count": 0
+      },
+      "progressive_disclosure": {
+        "secondary_family_floor": 9,
+        "secondary_family_size": 10
+      },
+      "scope": {
+        "comparisons": "adjacent pairs only",
+        "excludes": "non-adjacent comparisons are out of scope"
+      },
+      "separability_basis": "Holm applied to per-pair minimum attainable p-values"
+    },
+    "provenance": {
+      "deviations": [
+        "D4 harness comparability"
+      ],
+      "fetch_date": "pinned",
+      "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+      "source": "SWE-bench/experiments"
+    }
+  },
+  "pairs": {
+    "rank_1_vs_2": {
+      "card_kind": "pair_verdict",
+      "comparison": {
+        "instrument": "hidden-tests",
+        "n_items": 500,
+        "name": "rank_1_vs_2",
+        "system_a": "20251215_livesweagent_claude-opus-4-5",
+        "system_b": "20251205_sonar-foundation-agent_claude-opus-4-5"
+      },
+      "mde": {
+        "alpha": 0.05,
+        "alpha_basis": "registered uncorrected level, not the family correction",
+        "discordance_rate": 0.072,
+        "instances": 17.384765625,
+        "max_attainable_power": 0.9999999999511919,
+        "rate_difference": 0.03476953125,
+        "status": "attainable",
+        "target_power": 0.8
+      },
+      "provenance": {
+        "deviations": [
+          "D4 harness comparability"
+        ],
+        "fetch_date": "pinned",
+        "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+        "source": "SWE-bench/experiments"
+      },
+      "ruler": {
+        "observed_disagreements": 36,
+        "observed_net_edge": 0,
+        "required_net_edge_at_observed": 20,
+        "requirement_basis": "at the observed discordance, not the best-case floor",
+        "split": [
+          18,
+          18
+        ],
+        "threshold": 0.002631578947368421,
+        "threshold_basis": "the family's first critical value, the same bar as the gap floor"
+      },
+      "test": {
+        "adjusted_p_value": 1.0,
+        "alpha": 0.05,
+        "convention": "doubled-tail",
+        "decision_rule": "holm-adjusted p <= alpha",
+        "p_value": 1.0,
+        "statistic": "exact_mcnemar_two_sided"
+      },
+      "verdict": "NOT RESOLVED"
+    },
+    "rank_3_vs_4": {
+      "card_kind": "pair_verdict",
+      "comparison": {
+        "instrument": "hidden-tests",
+        "n_items": 500,
+        "name": "rank_3_vs_4",
+        "system_a": "20250928_trae_doubao_seed_code",
+        "system_b": "20251120_livesweagent_gemini-3-pro-preview"
+      },
+      "mde": {
+        "alpha": 0.05,
+        "alpha_basis": "registered uncorrected level, not the family correction",
+        "discordance_rate": 0.13,
+        "instances": 23.18084716796875,
+        "max_attainable_power": 0.9999999999999994,
+        "rate_difference": 0.0463616943359375,
+        "status": "attainable",
+        "target_power": 0.8
+      },
+      "provenance": {
+        "deviations": [
+          "D4 harness comparability"
+        ],
+        "fetch_date": "pinned",
+        "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+        "source": "SWE-bench/experiments"
+      },
+      "ruler": {
+        "observed_disagreements": 65,
+        "observed_net_edge": 7,
+        "required_net_edge_at_observed": 25,
+        "requirement_basis": "at the observed discordance, not the best-case floor",
+        "split": [
+          36,
+          29
+        ],
+        "threshold": 0.002631578947368421,
+        "threshold_basis": "the family's first critical value, the same bar as the gap floor"
+      },
+      "test": {
+        "adjusted_p_value": 1.0,
+        "alpha": 0.05,
+        "convention": "doubled-tail",
+        "decision_rule": "holm-adjusted p <= alpha",
+        "p_value": 0.4570207854105899,
+        "statistic": "exact_mcnemar_two_sided"
+      },
+      "verdict": "NOT RESOLVED"
+    }
+  }
+}
