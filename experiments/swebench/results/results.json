@@ -622,6 +622,7 @@
     }
   ],
   "primary": {
+    "coverage_rule_fired": false,
     "family_size": 19,
     "first_critical": 0.002631578947368421,
     "first_rejection_gap_floor": 10,
@@ -631,7 +632,8 @@
     "question": "how many adjacent pairs among the top N are statistically separable",
     "resolved_count": 0,
     "separability_basis": "Holm applied to per-pair minimum attainable p-values",
-    "separable_count": 0
+    "separable_count": 0,
+    "substitutions": []
   },
   "secondary": {
     "harness_straddle": {
@@ -641,177 +643,222 @@
       "straddling_pairs": []
     },
     "no_logs_sensitivity": {
+      "family": {
+        "alpha": 0.05,
+        "first_critical": 0.002631578947368421,
+        "resolved_count": 0,
+        "separable_count": 0,
+        "size": 19
+      },
       "pairs": [
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 1,
           "n01": 17,
           "n10": 18,
           "n_items": 499,
           "p_value": 1.0,
           "rank_a": 1,
-          "rank_b": 2
+          "rank_b": 2,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 31,
           "n10": 33,
           "n_items": 500,
           "p_value": 0.9006532462520331,
           "rank_a": 2,
-          "rank_b": 3
+          "rank_b": 3,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 1,
           "n01": 29,
           "n10": 35,
           "n_items": 499,
           "p_value": 0.5323087760278421,
           "rank_a": 3,
-          "rank_b": 4
+          "rank_b": 4,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 1,
           "n01": 24,
           "n10": 28,
           "n_items": 499,
           "p_value": 0.6778086391424605,
           "rank_a": 4,
-          "rank_b": 5
+          "rank_b": 5,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 28,
           "n10": 28,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 5,
-          "rank_b": 6
+          "rank_b": 6,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 33,
           "n10": 33,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 6,
-          "rank_b": 7
+          "rank_b": 7,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 31,
           "n10": 33,
           "n_items": 500,
           "p_value": 0.9006532462520331,
           "rank_a": 7,
-          "rank_b": 8
+          "rank_b": 8,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 30,
           "n10": 33,
           "n_items": 500,
           "p_value": 0.8013064925040662,
           "rank_a": 8,
-          "rank_b": 9
+          "rank_b": 9,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 28,
           "n10": 28,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 9,
-          "rank_b": 10
+          "rank_b": 10,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 1,
           "n01": 37,
           "n10": 37,
           "n_items": 499,
           "p_value": 1.0,
           "rank_a": 10,
-          "rank_b": 11
+          "rank_b": 11,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 1,
           "n01": 33,
           "n10": 33,
           "n_items": 499,
           "p_value": 1.0,
           "rank_a": 11,
-          "rank_b": 12
+          "rank_b": 12,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 33,
           "n10": 35,
           "n_items": 500,
           "p_value": 0.9035973456835125,
           "rank_a": 12,
-          "rank_b": 13
+          "rank_b": 13,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 17,
           "n10": 19,
           "n_items": 500,
           "p_value": 0.8679394004284404,
           "rank_a": 13,
-          "rank_b": 14
+          "rank_b": 14,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 26,
           "n10": 26,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 14,
-          "rank_b": 15
+          "rank_b": 15,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 28,
           "n10": 29,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 15,
-          "rank_b": 16
+          "rank_b": 16,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 28,
           "n10": 28,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 16,
-          "rank_b": 17
+          "rank_b": 17,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 29,
           "n10": 30,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 17,
-          "rank_b": 18
+          "rank_b": 18,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 37,
           "n10": 37,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 18,
-          "rank_b": 19
+          "rank_b": 19,
+          "rejected": false
         },
         {
+          "adjusted_p_value": 1.0,
           "dropped_instances": 0,
           "n01": 40,
           "n10": 40,
           "n_items": 500,
           "p_value": 1.0,
           "rank_a": 19,
-          "rank_b": 20
+          "rank_b": 20,
+          "rejected": false
         }
       ],
       "rule": "an instance is dropped from a comparison when either side failed to log it",

@@ -3,6 +3,9 @@
   "entries": [
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-12-15",
       "no_generation": 4,
       "no_logs": 1,
@@ -14,6 +17,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-12-05",
       "no_generation": 0,
       "no_logs": 0,
@@ -25,6 +31,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-09-28",
       "no_generation": 2,
       "no_logs": 0,
@@ -36,6 +45,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": null,
+      "checked_is_malformed": true,
+      "checked_raw": "false (See README.md for info on how to get your results verified)",
       "date": "2025-11-20",
       "no_generation": 2,
       "no_logs": 1,
@@ -47,6 +59,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-09-02",
       "no_generation": 0,
       "no_logs": 0,
@@ -58,6 +73,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-08-04",
       "no_generation": 2,
       "no_logs": 0,
@@ -69,6 +87,9 @@
     },
     {
       "artifact_format": "per-instance-map",
+      "checked": null,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2026-02-17",
       "no_generation": 0,
       "no_logs": 0,
@@ -80,6 +101,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-08-19",
       "no_generation": 0,
       "no_logs": 0,
@@ -91,6 +115,9 @@
     },
     {
       "artifact_format": "per-instance-map",
+      "checked": null,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2026-02-17",
       "no_generation": 0,
       "no_logs": 0,
@@ -102,6 +129,9 @@
     },
     {
       "artifact_format": "per-instance-map",
+      "checked": null,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2026-02-17",
       "no_generation": 0,
       "no_logs": 0,
@@ -113,6 +143,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-09-01",
       "no_generation": 3,
       "no_logs": 1,
@@ -124,6 +157,9 @@
     },
     {
       "artifact_format": "per-instance-map",
+      "checked": null,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2026-02-17",
       "no_generation": 0,
       "no_logs": 0,
@@ -135,6 +171,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-06-12",
       "no_generation": 1,
       "no_logs": 0,
@@ -146,6 +185,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-07-31",
       "no_generation": 0,
       "no_logs": 0,
@@ -157,6 +199,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-11-03",
       "no_generation": 3,
       "no_logs": 0,
@@ -168,6 +213,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-07-20",
       "no_generation": 1,
       "no_logs": 0,
@@ -179,6 +227,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-09-15",
       "no_generation": 0,
       "no_logs": 0,
@@ -190,6 +241,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-06-03",
       "no_generation": 1,
       "no_logs": 0,
@@ -201,6 +255,9 @@
     },
     {
       "artifact_format": "resolved-id-list",
+      "checked": false,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-10-15",
       "no_generation": 1,
       "no_logs": 0,
@@ -212,6 +269,9 @@
     },
     {
       "artifact_format": "per-instance-map",
+      "checked": true,
+      "checked_is_malformed": false,
+      "checked_raw": null,
       "date": "2025-11-24",
       "no_generation": 0,
       "no_logs": 0,

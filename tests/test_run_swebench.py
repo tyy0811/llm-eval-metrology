@@ -198,3 +198,159 @@ class TestCommittedResults:
         assert secondary["size"] == 10
         assert secondary["gap_floor"] == 9
         assert secondary["rejected"] == 0
+
+
+class TestAnalyticExpectationUsesD27:
+    """The assertion had reintroduced the option-1 definition D2.7 superseded."""
+
+    def test_the_recorded_counterexample(self) -> None:
+        """Gaps 40 and 6: per-gap against alpha/m gives 1, Holm over the vector gives 2."""
+        from metrology.paired import p_value_floor
+
+        gaps = [40, 6]
+        option_one = sum(1 for g in gaps if p_value_floor(g) <= 0.05 / len(gaps))
+
+        assert option_one == 1
+        assert run.analytic_separable_count(gaps, 0.05) == 2
+
+    def test_the_registered_gaps_give_zero(self) -> None:
+        """Both definitions agree here, which is why the wrong one survived."""
+        gaps = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+
+        assert run.analytic_separable_count(gaps, 0.05) == 0
+
+    def test_a_pair_below_the_gateway_can_still_be_separable(self) -> None:
+        assert run.analytic_separable_count([40, 6], 0.05) == 2
+        assert run.analytic_separable_count([6, 6], 0.05) == 0
+
+
+class TestCoverageConditional:
+    """PREREG D1 makes the forced-zero result conditional on no substitution."""
+
+    class FakeFamily:
+        def __init__(self, gaps, separable, alpha=0.05):
+            self.alpha = alpha
+            self.separable_count = separable
+            self.members = [type("M", (), {"net_edge": g})() for g in gaps]
+
+    def aggregates(self, gaps, substitutions=()):
+        counts, running = [], 100
+        for gap in [0, *gaps]:
+            running -= gap
+            counts.append(running)
+        return {
+            "entries": [{"resolved": c} for c in counts],
+            "substitutions": list(substitutions),
+        }
+
+    def test_a_substitution_halts_the_run(self) -> None:
+        family = self.FakeFamily([0, 2], 0)
+        aggregates = self.aggregates([0, 2], substitutions=[{"rank": 5, "reason": "x"}])
+
+        with pytest.raises(run.RunFailure, match="coverage rule fired"):
+            run.check_analytic_expectation(family, aggregates)
+
+    def test_a_clean_set_passes(self) -> None:
+        family = self.FakeFamily([0, 2], 0)
+
+        run.check_analytic_expectation(family, self.aggregates([0, 2]))
+
+    def test_a_derived_gap_vector_that_drifts_is_caught(self) -> None:
+        family = self.FakeFamily([0, 9], 0)
+
+        with pytest.raises(run.RunFailure, match="gap vector"):
+            run.check_analytic_expectation(family, self.aggregates([0, 2]))
+
+    def test_a_separable_count_contradicting_the_derivation_is_caught(self) -> None:
+        family = self.FakeFamily([0, 2], 1)
+
+        with pytest.raises(run.RunFailure, match="contradicts the analytic derivation"):
+            run.check_analytic_expectation(family, self.aggregates([0, 2]))
+
+
+class TestIllustrativeSelectionRule:
+    """D8 registers a rule, so the rule is applied rather than its output hard-coded."""
+
+    def entries(self, resolved):
+        return [
+            {"rank": i + 1, "system": f"s{i}", "resolved": r, "date": "2025-06-03"}
+            for i, r in enumerate(resolved)
+        ]
+
+    def test_first_pair_and_widest_gap_are_chosen(self) -> None:
+        names = run.illustrative_pair_names(self.entries([100, 100, 98, 91, 90]))
+
+        assert names == ["rank_1_vs_2", "rank_3_vs_4"]
+
+    def test_a_maximum_gap_tie_breaks_by_earliest_rank(self) -> None:
+        names = run.illustrative_pair_names(self.entries([100, 95, 90, 85]))
+
+        assert names == ["rank_1_vs_2"] or names[1] == "rank_1_vs_2"
+
+    def test_the_registered_family_selects_ranks_1_2_and_3_4(self) -> None:
+        aggregates = json.loads(
+            (EXPERIMENT / "derived" / "aggregates.json").read_text(encoding="utf-8")
+        )
+
+        assert run.illustrative_pair_names(aggregates["entries"]) == [
+            "rank_1_vs_2",
+            "rank_3_vs_4",
+        ]
+
+
+class TestCommittedCards:
+    def cards(self) -> dict:
+        return json.loads((EXPERIMENT / "results" / "cards.json").read_text(encoding="utf-8"))
+
+    def test_provenance_names_the_artifact_revision_not_the_board(self) -> None:
+        for card in self.cards()["pairs"].values():
+            assert card["provenance"]["source"] == "SWE-bench/experiments"
+            assert card["provenance"]["pinned_revision"].startswith("2f15350")
+
+    def test_the_fetch_date_is_a_real_committed_date(self) -> None:
+        import re
+
+        for card in self.cards()["pairs"].values():
+            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", card["provenance"]["fetch_date"])
+
+    def test_the_widest_gap_card_discloses_the_malformed_checked_field(self) -> None:
+        """D8: the card must not quietly clean up its own source."""
+        disclosures = self.cards()["pairs"]["rank_3_vs_4"]["provenance"]["deviations"]
+
+        assert any("checked" in d and "not a boolean" in d for d in disclosures)
+
+    def test_the_first_pair_card_carries_no_such_disclosure(self) -> None:
+        disclosures = self.cards()["pairs"]["rank_1_vs_2"]["provenance"]["deviations"]
+
+        assert not any("checked" in d for d in disclosures)
+
+    def test_the_family_card_carries_no_verdict(self) -> None:
+        assert "verdict" not in self.cards()["family"]
+
+
+class TestSensitivityConclusionIsDerived:
+    def sensitivity(self) -> dict:
+        results = json.loads((EXPERIMENT / "results" / "results.json").read_text(encoding="utf-8"))
+        return results["secondary"]["no_logs_sensitivity"]
+
+    def test_the_family_conclusion_is_machine_derived(self) -> None:
+        family = self.sensitivity()["family"]
+
+        assert family["size"] == 19
+        assert family["resolved_count"] == 0
+        assert family["separable_count"] == 0
+
+    def test_every_pair_carries_an_adjusted_value_and_a_flag(self) -> None:
+        for pair in self.sensitivity()["pairs"]:
+            assert "adjusted_p_value" in pair
+            assert pair["rejected"] is False
+
+
+class TestCoverageIsReported:
+    def test_substitutions_appear_in_the_committed_result(self) -> None:
+        primary = json.loads((EXPERIMENT / "results" / "results.json").read_text(encoding="utf-8"))[
+            "primary"
+        ]
+
+        assert primary["substitutions"] == []
+        assert primary["coverage_rule_fired"] is False

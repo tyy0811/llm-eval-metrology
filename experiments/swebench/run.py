@@ -46,6 +46,7 @@ from metrology.reporting import (  # noqa: E402
     build_family_report,
     family_card_json,
     pair_card_json,
+    validate_card,
 )
 from metrology.schema import load_long_csv  # noqa: E402
 
@@ -64,6 +65,15 @@ INSTRUMENT = "hidden-tests"
 # PREREG deviation D5. SWE-bench documents an evaluation fix in April 2024, which partitions
 # submissions into populations judged under different criteria.
 HARNESS_FIX_BOUNDARY = "2024-04-15"
+
+# The artifact revision the per-instance labels come from. The manifest also records the board
+# and dataset revisions; a card that says `SWE-bench/experiments` must show this one.
+ARTIFACT_SOURCE = "SWE-bench/experiments"
+
+# D0.9 forbids ambient state in result files, and D1.7 requires a fetch date on every card.
+# A committed constant satisfies both: it is a real date and it is an input, not something the
+# run observes. It changes only when the pinned revisions above change.
+CANONICAL_FETCH_DATE = "2026-07-29"
 
 
 class RunFailure(RuntimeError):
@@ -167,11 +177,113 @@ def no_logs_sensitivity(table, unevaluated: dict, entries: list[dict]) -> dict:
                 "p_value": outcome.p_value,
             }
         )
+    # The sensitivity is a family too, so its conclusion is derived rather than asserted in
+    # prose. Without this, "moves no conclusion" would be a claim a reader has to take on trust.
+    corrected = holm(
+        [(f"rank_{r['rank_a']}_vs_{r['rank_b']}", r["p_value"]) for r in results], alpha=ALPHA
+    )
+    outcomes = corrected.by_name()
+    for record in results:
+        outcome = outcomes[f"rank_{record['rank_a']}_vs_{record['rank_b']}"]
+        record["adjusted_p_value"] = outcome.adjusted
+        record["rejected"] = outcome.rejected
+
+    gaps = [abs(r["n10"] - r["n01"]) for r in results]
     return {
         "rule": "an instance is dropped from a comparison when either side failed to log it",
         "pairs": results,
         "total_pairs_affected": sum(1 for r in results if r["dropped_instances"]),
+        "family": {
+            "size": corrected.n_tests,
+            "alpha": ALPHA,
+            "first_critical": corrected.first_critical,
+            "resolved_count": corrected.n_rejected,
+            "separable_count": analytic_separable_count(gaps, ALPHA),
+        },
     }
+
+
+def analytic_separable_count(gaps: list[int], alpha: float) -> int:
+    """Separability from gaps alone, by the D2.7 definition.
+
+    Holm over the **vector** of per-pair minimum attainable p-values. Comparing each floor
+    independently against `alpha / m` is the option 1 definition D2.7 superseded: on gaps of 40
+    and 6 it returns 1 where Holm returns 2, because a pair below the gateway floor can still
+    follow one that clears it. The registered data returns zero either way, which is exactly why
+    the wrong version survived here once.
+    """
+    floors = [(f"pair_{index}", p_value_floor(gap)) for index, gap in enumerate(gaps)]
+    return holm(floors, alpha=alpha).n_rejected
+
+
+def check_analytic_expectation(family, aggregates: dict) -> None:
+    """PREREG D7 and D1: the headline is fixed by published rates, conditional on the set.
+
+    D1 registered the forcing as conditional on integrity gate 3 passing and the coverage rule
+    substituting nothing. Both conditions are checked here rather than assumed, because a
+    substitution changes the gap vector and the derivation would have to be redone and appended
+    as a further deviation before the primary could be reported.
+    """
+    substitutions = aggregates.get("substitutions", [])
+    if substitutions:
+        raise RunFailure(
+            f"the coverage rule fired {len(substitutions)} time(s), so the registered gap vector "
+            "no longer describes the analysed set. PREREG D1 makes the forced-zero result "
+            "conditional on no substitution; recompute the derivation and append a deviation "
+            "before reporting the primary."
+        )
+
+    gaps = [abs(member.net_edge) for member in family.members]
+    published = [entry["resolved"] for entry in aggregates["entries"]]
+    published_gaps = [published[i] - published[i + 1] for i in range(len(published) - 1)]
+    if gaps != [abs(gap) for gap in published_gaps]:
+        raise RunFailure(
+            "the derived gap vector does not match the published one; integrity gate 3 should "
+            "have caught this in fetch.py"
+        )
+
+    expected = analytic_separable_count(gaps, family.alpha)
+    if family.separable_count != expected:
+        raise RunFailure(
+            f"separable count {family.separable_count} contradicts the analytic derivation, "
+            f"which gives {expected}; the engine and the derivation disagree"
+        )
+
+
+def illustrative_pair_names(entries: list[dict]) -> list[str]:
+    """PREREG deviation D8's registered selection rule, applied rather than hard-coded.
+
+    Render the first published adjacent pair, and the adjacent pair with the largest published
+    resolved-count gap, breaking a maximum-gap tie by earliest published rank. Hard-coding the
+    names would silently keep the old selection if the coverage rule ever changed the set.
+    """
+    pairs = adjacent_pairs(entries)
+    gaps = [a["resolved"] - b["resolved"] for a, b in pairs]
+    widest = max(range(len(gaps)), key=lambda index: (gaps[index], -index))
+    chosen = [0, widest] if widest != 0 else [0]
+    return [f"rank_{pairs[i][0]['rank']}_vs_{pairs[i][1]['rank']}" for i in chosen]
+
+
+def illustrative_card(family, entries: list[dict], name: str) -> dict:
+    """One illustrative pair card, carrying any upstream defect its entries are known to have.
+
+    D8 requires the rank 3 to 4 card to disclose that its lower entry carries a malformed
+    `checked` value rather than normalizing it away. A card illustrating measurement discipline
+    should not quietly clean up its own source, so the disclosure is derived from the aggregates
+    rather than written by hand.
+    """
+    member = next(m for m in family.members if m.name == name)
+    card = pair_card_json(member)
+    by_system = {entry["system"]: entry for entry in entries}
+    for system in (member.system_a, member.system_b):
+        entry = by_system.get(system, {})
+        if entry.get("checked_is_malformed"):
+            card["provenance"]["deviations"].append(
+                f"upstream 'checked' field for rank {entry['rank']} is a sentence, not a "
+                f"boolean: {entry['checked_raw']!r}"
+            )
+    validate_card(card)
+    return card
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -179,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.parse_args(argv)
 
     print("verifying derived inputs against the committed manifest")
-    verify_inputs()
+    manifest = verify_inputs()
     print("  all derived inputs match")
 
     aggregates = json.loads((DERIVED / "aggregates.json").read_text(encoding="utf-8"))
@@ -188,10 +300,11 @@ def main(argv: list[str] | None = None) -> int:
     table = load_long_csv(DERIVED / "labels.csv")
     print(f"  loaded {table.n_rows} labels over {len(table.systems)} systems")
 
+    artifact_revision = manifest["artifacts"][0]["url"].split("/experiments/")[1].split("/")[0]
     provenance = Provenance(
-        source="SWE-bench/experiments",
-        pinned_revision=json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["board"]["commit"],
-        fetch_date=str(aggregates.get("fetched", "pinned")),
+        source=ARTIFACT_SOURCE,
+        pinned_revision=artifact_revision,
+        fetch_date=CANONICAL_FETCH_DATE,
         deviations=("D4 harness comparability",),
     )
 
@@ -300,6 +413,8 @@ def main(argv: list[str] | None = None) -> int:
             "largest_observed_gap": family.largest_observed_gap,
             "separability_basis": "Holm applied to per-pair minimum attainable p-values",
             "needs_per_instance_data": False,
+            "substitutions": aggregates.get("substitutions", []),
+            "coverage_rule_fired": bool(aggregates.get("substitutions")),
             "note": (
                 "PREREG D7: the count follows from published resolve rates alone. The "
                 "per-instance work below characterizes it and cannot overturn it."
@@ -342,9 +457,8 @@ def main(argv: list[str] | None = None) -> int:
     cards = {
         "family": family_card_json(family),
         "pairs": {
-            member.name: pair_card_json(member)
-            for member in family.members
-            if member.name in {f"rank_{1}_vs_{2}", f"rank_{3}_vs_{4}"}
+            name: illustrative_card(family, entries, name)
+            for name in illustrative_pair_names(entries)
         },
     }
     (RESULTS / "cards.json").write_text(

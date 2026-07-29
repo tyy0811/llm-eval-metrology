@@ -54,8 +54,8 @@
       "deviations": [
         "D4 harness comparability"
       ],
-      "fetch_date": "pinned",
-      "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+      "fetch_date": "2026-07-29",
+      "pinned_revision": "2f15350cd32becc4569e0d826361048555b605c0",
       "source": "SWE-bench/experiments"
     }
   },
@@ -83,8 +83,8 @@
         "deviations": [
           "D4 harness comparability"
         ],
-        "fetch_date": "pinned",
-        "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+        "fetch_date": "2026-07-29",
+        "pinned_revision": "2f15350cd32becc4569e0d826361048555b605c0",
         "source": "SWE-bench/experiments"
       },
       "ruler": {
@@ -130,10 +130,11 @@
       },
       "provenance": {
         "deviations": [
-          "D4 harness comparability"
+          "D4 harness comparability",
+          "upstream 'checked' field for rank 4 is a sentence, not a boolean: 'false (See README.md for info on how to get your results verified)'"
         ],
-        "fetch_date": "pinned",
-        "pinned_revision": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+        "fetch_date": "2026-07-29",
+        "pinned_revision": "2f15350cd32becc4569e0d826361048555b605c0",
         "source": "SWE-bench/experiments"
       },
       "ruler": {

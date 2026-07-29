@@ -559,6 +559,16 @@ def main(argv: list[str] | None = None) -> int:
                     "rank": entry.rank,
                     "system": entry.folder,
                     "date": entry.date,
+                    # `checked` is bool, null, or, for six board entries, a sentence. Null is
+                    # absence; a string is the defect recon recorded, and a boolean test on it
+                    # would read "false (...)" as true.
+                    "checked": entry.checked if isinstance(entry.checked, bool) else None,
+                    "checked_is_malformed": not isinstance(entry.checked, (bool, type(None))),
+                    "checked_raw": (
+                        str(entry.checked)
+                        if not isinstance(entry.checked, (bool, type(None)))
+                        else None
+                    ),
                     "published_rate": entry.published_rate,
                     "resolved": entry.implied_resolved,
                     "artifact_format": artifacts[entry.folder].artifact_format,
