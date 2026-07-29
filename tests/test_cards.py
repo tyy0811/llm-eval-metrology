@@ -228,3 +228,170 @@ class TestDocument:
         ):
             assert token in CARD_STYLESHEET, token
             assert token in reference, token
+
+
+class TestValidationCoversEveryRenderedField:
+    """Validation checked key presence only, so a malformed card reached the renderer."""
+
+    @pytest.mark.parametrize(
+        ("block", "key"),
+        [
+            ("test", "adjusted_p_value"),
+            ("ruler", "threshold_basis"),
+            ("mde", "alpha_basis"),
+        ],
+    )
+    def test_a_missing_rendered_field_is_rejected_not_a_keyerror(self, block, key) -> None:
+        card = pair_with(43)
+        del card[block][key]
+
+        with pytest.raises(ValueError, match=key):
+            render_card(card)
+
+    def test_a_missing_separability_basis_is_rejected(self) -> None:
+        card = family_card_json(registered_family())
+        del card["family_finding"]["separability_basis"]
+
+        with pytest.raises(ValueError, match="separability_basis"):
+            render_card(card)
+
+    def test_a_non_numeric_split_is_rejected(self) -> None:
+        """The injection vector: split reached an unescaped style attribute."""
+        card = pair_with(43)
+        card["ruler"]["split"] = ['1;" onmouseover="alert(1)', 18]
+
+        with pytest.raises(ValueError, match="split"):
+            render_card(card)
+
+    def test_a_split_inconsistent_with_the_total_is_rejected(self) -> None:
+        card = pair_with(43)
+        card["ruler"]["split"] = [25, 99]
+
+        with pytest.raises(ValueError, match="split"):
+            render_card(card)
+
+    def test_a_p_value_outside_the_unit_interval_is_rejected(self) -> None:
+        card = pair_with(43)
+        card["test"]["p_value"] = 4.2
+
+        with pytest.raises(ValueError, match="p_value"):
+            render_card(card)
+
+    def test_an_unknown_mde_status_is_rejected(self) -> None:
+        card = pair_with(43)
+        card["mde"]["status"] = "probably"
+
+        with pytest.raises(ValueError, match="status"):
+            render_card(card)
+
+    def test_no_attribute_injection_survives_validation(self) -> None:
+        """Defense in depth: escaping stays, but the value never reaches the renderer."""
+        card = pair_with(43)
+        card["ruler"]["observed_disagreements"] = '43" onmouseover="alert(1)'
+
+        with pytest.raises(ValueError, match="observed_disagreements"):
+            render_card(card)
+
+
+class TestReversedPairs:
+    def reversed_pair(self):
+        family = build_family_report(
+            [PairCounts(name="rev", system_a="a", system_b="b", n01=25, n10=18, n_items=500)],
+            instrument="hidden-tests",
+            alpha=0.05,
+            provenance=PROVENANCE,
+        )
+        return pair_card_json(family.members[0])
+
+    def test_the_net_edge_can_legitimately_be_negative(self) -> None:
+        assert self.reversed_pair()["ruler"]["observed_net_edge"] == -7
+
+    def test_the_ruler_position_is_never_negative(self) -> None:
+        rendered = render_card(self.reversed_pair())
+
+        assert "left: -" not in rendered
+
+    def test_the_reading_states_the_magnitude(self) -> None:
+        """Direction is already carried by the split, so the edge is reported as a size."""
+        rendered = render_card(self.reversed_pair())
+
+        assert "edge of -7" not in rendered
+        assert "edge of 7" in rendered
+
+    def test_a_reversed_pair_is_not_treated_as_an_endpoint(self) -> None:
+        rendered = render_card(self.reversed_pair())
+
+        assert "at-start" not in rendered
+
+
+class TestVerdictDispatch:
+    def resolved_pair(self):
+        family = build_family_report(
+            [PairCounts(name="wide", system_a="a", system_b="b", n01=0, n10=40, n_items=500)],
+            instrument="hidden-tests",
+            alpha=0.05,
+            provenance=PROVENANCE,
+        )
+        return pair_card_json(family.members[0])
+
+    def test_a_resolved_card_does_not_use_the_unresolved_styling(self) -> None:
+        rendered = render_card(self.resolved_pair())
+
+        assert "is-open" not in rendered
+        assert "is-resolved" in rendered
+
+    def test_an_unresolved_card_keeps_the_amber_styling(self) -> None:
+        rendered = render_card(pair_with(43))
+
+        assert "is-open" in rendered
+        assert "is-resolved" not in rendered
+
+    def test_equivalent_is_refused_rather_than_rendered_as_unresolved(self) -> None:
+        """TOST fields do not exist yet, so rendering it would state something false."""
+        card = pair_with(43)
+        card["verdict"] = "EQUIVALENT"
+
+        with pytest.raises(ValueError, match="EQUIVALENT"):
+            render_card(card)
+
+
+class TestIdSafety:
+    def named(self, name: str):
+        family = build_family_report(
+            [PairCounts(name=name, system_a="a", system_b="b", n01=1, n10=2, n_items=500)],
+            instrument="hidden-tests",
+            alpha=0.05,
+            provenance=PROVENANCE,
+        )
+        return pair_card_json(family.members[0])
+
+    @pytest.mark.parametrize(
+        "name", ["rank 3 vs rank 4", "a/b: c", "with.dots", "unicode name", "tabs\tand spaces"]
+    )
+    def test_ids_contain_no_whitespace_or_punctuation(self, name: str) -> None:
+        import re
+
+        rendered = render_card(self.named(name))
+        referenced = re.search(r'aria-labelledby="([^"]+)"', rendered).group(1)
+
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", referenced), referenced
+        assert f'id="{referenced}"' in rendered
+
+    def test_ids_are_deterministic(self) -> None:
+        assert render_card(self.named("rank 3 vs 4")) == render_card(self.named("rank 3 vs 4"))
+
+    def test_different_names_get_different_ids(self) -> None:
+        import re
+
+        first = re.search(r'aria-labelledby="([^"]+)"', render_card(self.named("a b"))).group(1)
+        second = re.search(r'aria-labelledby="([^"]+)"', render_card(self.named("a-b"))).group(1)
+
+        assert first != second
+
+
+class TestSeparableDefinitionPrefix:
+    def test_the_face_states_separable_means(self) -> None:
+        """D1.9 face requirement: the term is defined on the face, as in the reference."""
+        rendered = render_card(family_card_json(registered_family()))
+
+        assert "Separable means the family" in rendered

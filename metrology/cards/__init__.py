@@ -15,6 +15,8 @@ reaches for a template engine.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from html import escape
 from pathlib import Path
 
@@ -38,6 +40,18 @@ def ruler_marker_class(edge: int, total: int) -> str:
     if edge >= total:
         return "at-end"
     return ""
+
+
+def html_id(name: str) -> str:
+    """Deterministic, ID-safe encoding of a card name.
+
+    Card names are free text and may carry spaces or punctuation, which would break the
+    `aria-labelledby` reference they are used in. Sanitizing alone could collide two distinct
+    names onto one id, so a short digest of the original is appended.
+    """
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-") or "card"
+    digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+    return f"{stem}-{digest}"
 
 
 def _num(value: float, places: int) -> str:
@@ -77,7 +91,9 @@ def _pair_body(card: dict) -> str:
     comparison, ruler = card["comparison"], card["ruler"]
     total = ruler["observed_disagreements"]
     favour_a, favour_b = ruler["split"]
-    edge = ruler["observed_net_edge"]
+    # The ruler measures magnitude. A reversed pair has a negative net edge, which would place
+    # the marker off the left of the track; the split already carries the direction.
+    edge = abs(ruler["observed_net_edge"])
     required = ruler["required_net_edge_at_observed"]
     name_a, name_b = escape(comparison["system_a"]), escape(comparison["system_b"])
 
@@ -130,9 +146,18 @@ def render_pair_card(card: dict) -> str:
     comparison, test, ruler, mde = card["comparison"], card["test"], card["ruler"], card["mde"]
     total = ruler["observed_disagreements"]
     favour_a, favour_b = ruler["split"]
-    edge = ruler["observed_net_edge"]
-    slug = escape(comparison["name"])
+    edge = abs(ruler["observed_net_edge"])
+    slug = html_id(comparison["name"])
+    label = escape(comparison["name"])
 
+    if card["verdict"] == "EQUIVALENT":
+        raise ValueError(
+            "cannot render an EQUIVALENT verdict: it requires TOST at a declared band, which "
+            "arrives in Phase 5. Rendering it now would emit the NOT RESOLVED reading, which "
+            "states something false about the comparison."
+        )
+
+    rail = "is-resolved" if card["verdict"] == "RESOLVED" else "is-open"
     if card["verdict"] == "RESOLVED":
         reading = (
             f"These two systems disagree on {total} of {comparison['n_items']} instances, "
@@ -193,10 +218,10 @@ def render_pair_card(card: dict) -> str:
 
     return (
         f'<article class="card" aria-labelledby="pair-{slug}">\n'
-        f'  <hr class="card-rail is-open">\n'
+        f'  <hr class="card-rail {rail}">\n'
         f"  <section>\n"
-        f'    <h2 class="eyebrow" id="pair-{slug}">Pair verdict: {slug}</h2>\n'
-        f'    <p class="verdict-stamp">{escape(card["verdict"])}</p>\n'
+        f'    <h2 class="eyebrow" id="pair-{slug}">Pair verdict: {label}</h2>\n'
+        f'    <p class="verdict-stamp {rail}">{escape(card["verdict"])}</p>\n'
         f'    <p class="reading">{escape(reading)}</p>\n'
         f"  </section>\n"
         f"  <section>\n"
@@ -252,7 +277,8 @@ def render_family_card(card: dict) -> str:
         f'    <h2 class="eyebrow" id="family-summary">Benchmark resolving power</h2>\n'
         f'    <p class="banner-figure"><b>{headline["separable_count"]} of '
         f"{headline['family_size']}</b> adjacent pairs separable</p>\n"
-        f'    <p class="banner-sub">{escape(finding["definitions"]["separable"])}</p>\n'
+        f'    <p class="banner-sub">Separable means '
+        f"{escape(finding['definitions']['separable'])}</p>\n"
         f'    <p class="scope-line">{escape(finding["scope"]["comparisons"].capitalize())}. '
         f"{escape(finding['scope']['excludes'].capitalize())}.</p>\n"
         f"  </section>\n"

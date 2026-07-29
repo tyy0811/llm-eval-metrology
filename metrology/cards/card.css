@@ -117,3 +117,9 @@ details[open] summary { margin-bottom: 0.7rem; }
 .note { font-size: 0.82rem; color: var(--muted); }
 h1 { font-size: 1.05rem; margin: 0 0 0.2rem; }
 h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
+
+/* State variants for the verdict stamp and rail. The reference shows only the unresolved state,
+   so these use the --state-resolved token it already defines rather than introducing new colour. */
+.card-rail.is-resolved { background: var(--state-resolved); }
+.verdict-stamp.is-resolved { color: var(--state-resolved); }
+.verdict-stamp.is-open { color: var(--state-open); }

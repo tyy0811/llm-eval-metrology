@@ -543,50 +543,155 @@ def family_card_json(report: FamilyReport) -> dict:
     }
 
 
-#: Required shapes, checked before a renderer is allowed to draw anything.
-_PAIR_SHAPE = {
-    "comparison": ("name", "system_a", "system_b", "instrument", "n_items"),
-    "test": ("statistic", "convention", "p_value", "alpha", "decision_rule"),
+#: Required shape for a pair card: block, key, and the check the value must pass. Presence alone
+#: is not enough. A card that validates must be safe to render, which means every field the
+#: renderer interpolates is type-checked here rather than trusted. The split reached an unescaped
+#: style attribute, so a string there produced executable markup.
+_INT = "int"
+_NUM = "number"
+_PROB = "probability"
+_LEVEL = "level"
+_TEXT = "text"
+_LIST = "list"
+
+_PAIR_SHAPE: dict[str, tuple[tuple[str, str], ...]] = {
+    "comparison": (
+        ("name", _TEXT),
+        ("system_a", _TEXT),
+        ("system_b", _TEXT),
+        ("instrument", _TEXT),
+        ("n_items", _INT),
+    ),
+    "test": (
+        ("statistic", _TEXT),
+        ("convention", _TEXT),
+        ("p_value", _PROB),
+        ("adjusted_p_value", "probability?"),
+        ("alpha", _LEVEL),
+        ("decision_rule", _TEXT),
+    ),
     "ruler": (
-        "observed_disagreements",
-        "split",
-        "observed_net_edge",
-        "required_net_edge_at_observed",
-        "threshold",
+        ("observed_disagreements", _INT),
+        ("split", "split"),
+        ("observed_net_edge", "signed_int"),
+        ("required_net_edge_at_observed", "int?"),
+        ("threshold", _LEVEL),
+        ("threshold_basis", _TEXT),
+        ("requirement_basis", _TEXT),
     ),
-    "mde": ("status", "alpha", "target_power", "max_attainable_power", "discordance_rate"),
-    "provenance": ("source", "pinned_revision", "fetch_date", "deviations"),
+    "mde": (
+        ("status", "mde_status"),
+        ("alpha", _LEVEL),
+        ("alpha_basis", _TEXT),
+        ("target_power", _LEVEL),
+        ("max_attainable_power", _PROB),
+        ("rate_difference", "number?"),
+        ("instances", "number?"),
+        ("discordance_rate", _PROB),
+    ),
+    "provenance": (
+        ("source", _TEXT),
+        ("pinned_revision", _TEXT),
+        ("fetch_date", _TEXT),
+        ("deviations", _LIST),
+    ),
 }
 
-_FINDING_SHAPE = {
-    "headline": ("separable_count", "family_size", "unit"),
-    "observed": ("resolved_count", "decision_rule"),
-    "criterion": ("statistic", "convention", "correction", "alpha", "threshold"),
+_FINDING_SHAPE: dict[str, tuple[tuple[str, str], ...]] = {
+    "headline": (("separable_count", _INT), ("family_size", _INT), ("unit", _TEXT)),
+    "observed": (("resolved_count", _INT), ("decision_rule", _TEXT), ("note", _TEXT)),
+    "criterion": (
+        ("statistic", _TEXT),
+        ("convention", _TEXT),
+        ("correction", _TEXT),
+        ("alpha", _LEVEL),
+        ("threshold", _LEVEL),
+    ),
     "limit": (
-        "first_rejection_gap_floor",
-        "floor_label",
-        "observed_extreme",
-        "observed_extreme_label",
-        "inference",
+        ("first_rejection_gap_floor", _INT),
+        ("floor_label", _TEXT),
+        ("observed_extreme", _INT),
+        ("observed_extreme_label", _TEXT),
+        ("inference", _TEXT),
     ),
-    "scope": ("comparisons", "excludes"),
-    "definitions": ("separable",),
-    "disclosure": ("applies_to_headline", "applies_to_secondary"),
-    "progressive_disclosure": ("secondary_family_size", "secondary_family_floor"),
+    "scope": (("comparisons", _TEXT), ("excludes", _TEXT)),
+    "definitions": (("separable", _TEXT),),
+    "disclosure": (("applies_to_headline", _LIST), ("applies_to_secondary", _LIST)),
+    "progressive_disclosure": (
+        ("secondary_family_size", "int?"),
+        ("secondary_family_floor", "int?"),
+    ),
 }
 
+_MDE_STATUSES = ("attainable", "unattainable")
 
-def _require_blocks(card: dict, shape: dict, label: str) -> None:
+
+def _check_value(value: object, kind: str, where: str, card: dict | None = None) -> None:
+    optional = kind.endswith("?")
+    base = kind[:-1] if optional else kind
+    if value is None:
+        if optional:
+            return
+        raise ValueError(f"{where} must not be null")
+
+    if base in (_INT, "signed_int"):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{where} must be an integer, got {value!r}")
+        if base == _INT and value < 0:
+            raise ValueError(f"{where} must not be negative, got {value!r}")
+    elif base in (_NUM, _PROB, _LEVEL):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{where} must be a number, got {value!r}")
+        if not math.isfinite(value):
+            raise ValueError(f"{where} must be finite, got {value!r}")
+        if base == _PROB and not 0.0 <= value <= 1.0:
+            raise ValueError(f"{where} must be in [0, 1], got {value!r}")
+        if base == _LEVEL and not 0.0 < value <= 1.0:
+            raise ValueError(f"{where} must be in (0, 1], got {value!r}")
+    elif base == _TEXT:
+        if not isinstance(value, str):
+            raise ValueError(f"{where} must be a string, got {value!r}")
+    elif base == _LIST:
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise ValueError(f"{where} must be a list of strings, got {value!r}")
+    elif base == "mde_status":
+        if value not in _MDE_STATUSES:
+            raise ValueError(f"{where} must be one of {_MDE_STATUSES}, got {value!r}")
+    elif base == "split":
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError(f"{where} must be a pair of counts, got {value!r}")
+        for part in value:
+            if isinstance(part, bool) or not isinstance(part, int) or part < 0:
+                raise ValueError(f"{where} must contain nonnegative integers, got {value!r}")
+        if card is not None and sum(value) != card["ruler"]["observed_disagreements"]:
+            raise ValueError(
+                f"{where} must sum to observed_disagreements "
+                f"{card['ruler']['observed_disagreements']}, got {value!r}"
+            )
+    else:  # pragma: no cover - guards the table itself
+        raise ValueError(f"unknown check {kind!r} for {where}")
+
+
+def _require_blocks(card: dict, shape: dict, label: str, root: dict | None = None) -> None:
     for block, keys in shape.items():
         if block not in card:
             raise ValueError(f"{label} is missing the {block!r} block")
-        for key in keys:
+        if not isinstance(card[block], dict):
+            raise ValueError(f"{label} block {block!r} must be an object")
+        for key, kind in keys:
             if key not in card[block]:
                 raise ValueError(f"{label} block {block!r} is missing {key!r}")
+            _check_value(card[block][key], kind, f"{label}.{block}.{key}", root)
 
 
 def validate_card(card: dict) -> bool:
-    """Enforce the D1.9 schema and the required card shape. Raises rather than returning False."""
+    """Enforce the D1.9 schema and the full renderable shape. Raises rather than returning False.
+
+    A card that passes here must be safe to render. Presence checks alone were not enough: a
+    missing field surfaced as a KeyError inside the renderer, and a string where a count belonged
+    reached an unescaped style attribute and produced executable markup. Escaping stays as defense
+    in depth, but the value should never arrive.
+    """
     kind = card.get("card_kind")
 
     if kind == CARD_PAIR:
@@ -594,7 +699,7 @@ def validate_card(card: dict) -> bool:
             raise ValueError("a pair card must carry a verdict")
         if card["verdict"] not in VERDICTS:
             raise ValueError(f"verdict must be one of {VERDICTS}, got {card['verdict']!r}")
-        _require_blocks(card, _PAIR_SHAPE, "pair card")
+        _require_blocks(card, _PAIR_SHAPE, "pair card", root=card)
         return True
 
     if kind == CARD_FAMILY:
@@ -610,9 +715,12 @@ def validate_card(card: dict) -> bool:
             raise ValueError("family_finding must declare its claim_type")
         if "conditionality" not in finding:
             raise ValueError("family_finding is missing the 'conditionality' block")
+        _check_value(finding["conditionality"], _LIST, "family_finding.conditionality")
+        _check_value(finding.get("separability_basis"), _TEXT, "family_finding.separability_basis")
         _require_blocks(finding, _FINDING_SHAPE, "family_finding")
         if "provenance" not in card:
             raise ValueError("a family card must carry a provenance block")
+        _require_blocks(card, {"provenance": _PAIR_SHAPE["provenance"]}, "family card")
         _reject_verdict_strings(finding)
         return True
 
