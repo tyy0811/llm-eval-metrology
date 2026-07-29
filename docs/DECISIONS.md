@@ -947,3 +947,57 @@ the first rejection must clear, exposed as `first_rejection_gap_floor`. This sup
 name in D1.9. The structured finding gains
 `separability_basis: "Holm applied to per-pair minimum attainable p-values"`, so a card states how
 its headline was derived rather than leaving a reader to assume.
+
+---
+
+## D2.8 Phase 2 complete
+
+**Date:** 2026-07-29
+**Status:** settled
+
+Engine v0.1 is `schema`, `paired`, `power`, `multiplicity`, `reporting`, and `cards`. T2.1 through
+T2.7 are complete, with each T2.7 item verified against a named test rather than assumed: the
+McNemar fixtures across gaps 0 to 10 including the zero-discordance and fully one-sided edges,
+bootstrap reproducibility under a fixed seed, Holm against a hand computation, the loader's
+duplicate-key, missing-anchor, and broken-pairing failures, and the card snapshots.
+
+**Markdown findings rendering is not here, and that is deliberate.** D2.6 reassigned it to T3.3,
+where its consumer and its results file exist. Recording the reassignment in the completion entry
+so a later reader does not mistake it for an omission.
+
+**The approved reference preceded the renderer.** `fixtures/verdict_reference.html` was built,
+reviewed, corrected, and committed before any rendering code existed (D1.3). Had the order been
+reversed, the renderer's own output would have become the snapshot baseline and the tests would
+have been self-consistent while proving nothing about whether a card communicates. Regenerating
+the snapshots later caught a heading regression that no assertion covered, which is the payoff for
+a snapshot helper that writes a baseline and then fails rather than blessing it.
+
+**`EQUIVALENT` rendering is explicitly refused** until Phase 5 supplies the TOST fields. A card
+that rendered it today would show the NOT RESOLVED reading, and a card that lies is worse than one
+that fails to draw.
+
+**Card validation is now the boundary it claimed to be**, reached across four review passes rather
+than designed correctly at once:
+
+1. D1.9 schema: verdict placement, and no verdict string anywhere inside a family finding.
+2. Types for every field the renderer interpolates, after a string in `ruler.split` reached an
+   unescaped style attribute and produced executable markup.
+3. Cross-field invariants, after six cards whose every field was individually well-typed rendered
+   impossibilities, the worst being a verdict flipped to RESOLVED while its p-value stayed 0.360.
+4. Decision-rule dispatch, after an unrecognized rule fell through to the raw-p branch, so a card
+   could display one rule while the verdict was checked against another.
+
+The lesson worth carrying into Phase 3: each pass fixed what the previous one had claimed to
+cover. "Validated" meant progressively more each time, and only the negative controls distinguished
+the claim from the fact.
+
+**Verification.** CI run 30453635921 at `7d6a1c8`, 412 tests. Locally: tests, ruff lint and format,
+dash-check, and the import boundary all green, with the engine importing nothing beyond the
+standard library, numpy, and scipy across seven modules.
+
+**Next.** Phase 3, Experiment 1. `fetch.py` against the revisions pinned in
+`docs/recon_swebench.md`, `run.py` executing exactly the pre-registration, the derived table
+generated and untracked per D1.4 with checksums and de minimis aggregates committed instead, and
+`make reproduce` becoming real at T3.5. Two settled constraints carry in: `q` comes from
+`discordance_rate_from_counts` and never from a published gap (D2.5), and the primary result needs
+no upstream artifact at all (PREREG D7).
