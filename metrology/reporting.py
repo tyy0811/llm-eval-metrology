@@ -684,6 +684,97 @@ def _require_blocks(card: dict, shape: dict, label: str, root: dict | None = Non
             _check_value(card[block][key], kind, f"{label}.{block}.{key}", root)
 
 
+def _check_pair_invariants(card: dict) -> None:
+    """Relationships between fields, which per-field type checks cannot see.
+
+    Each value below is individually well-typed. What makes a card wrong is the relationship:
+    43 disagreements among 20 items, a net edge that contradicts its own split, a verdict that
+    contradicts its own decision rule. A card that passes validation must be renderable **and**
+    internally consistent, or the renderer faithfully draws a false result.
+    """
+    comparison, test, ruler, mde = card["comparison"], card["test"], card["ruler"], card["mde"]
+    total = ruler["observed_disagreements"]
+    favour_a, favour_b = ruler["split"]
+    n_items = comparison["n_items"]
+
+    if n_items < 1:
+        raise ValueError(f"comparison.n_items must be at least 1, got {n_items}")
+    if total > n_items:
+        raise ValueError(
+            f"ruler.observed_disagreements {total} cannot exceed comparison.n_items {n_items}"
+        )
+    if ruler["observed_net_edge"] != favour_a - favour_b:
+        raise ValueError(
+            f"ruler.observed_net_edge {ruler['observed_net_edge']} must equal the split "
+            f"difference {favour_a} minus {favour_b}, which is {favour_a - favour_b}"
+        )
+
+    expected_required = required_net_edge_at(total, threshold=ruler["threshold"])
+    if ruler["required_net_edge_at_observed"] != expected_required:
+        raise ValueError(
+            f"ruler.required_net_edge_at_observed {ruler['required_net_edge_at_observed']!r} "
+            f"does not match the requirement at {total} disagreements and threshold "
+            f"{ruler['threshold']!r}, which is {expected_required!r}"
+        )
+
+    expected_rate = total / n_items
+    if not math.isclose(mde["discordance_rate"], expected_rate, rel_tol=1e-9, abs_tol=1e-12):
+        raise ValueError(
+            f"mde.discordance_rate {mde['discordance_rate']!r} must equal "
+            f"{total} over {n_items}, which is {expected_rate!r}"
+        )
+
+    populated = [mde["rate_difference"] is not None, mde["instances"] is not None]
+    if mde["status"] == "attainable" and not all(populated):
+        raise ValueError(
+            "mde.status is 'attainable' but rate_difference or instances is null; an attainable "
+            "result must carry both"
+        )
+    if mde["status"] == "unattainable" and any(populated):
+        raise ValueError(
+            "mde.status is 'unattainable' but rate_difference or instances is present; an "
+            "unattainable result must carry neither"
+        )
+
+    if test["decision_rule"] == "holm-adjusted p <= alpha":
+        if test["adjusted_p_value"] is None:
+            raise ValueError(
+                "the decision rule names an adjusted p-value but adjusted_p_value is null"
+            )
+        holds = test["adjusted_p_value"] <= test["alpha"]
+    else:
+        holds = test["p_value"] <= test["alpha"]
+    expected_verdict = VERDICT_RESOLVED if holds else VERDICT_NOT_RESOLVED
+    if card["verdict"] != expected_verdict:
+        raise ValueError(
+            f"verdict {card['verdict']!r} contradicts the displayed decision rule "
+            f"{test['decision_rule']!r}, which gives {expected_verdict!r}"
+        )
+
+
+def _check_family_invariants(finding: dict) -> None:
+    headline, observed = finding["headline"], finding["observed"]
+    separable, resolved = headline["separable_count"], observed["resolved_count"]
+    size = headline["family_size"]
+
+    if not resolved <= separable <= size:
+        raise ValueError(
+            f"family counts must satisfy resolved <= separable <= family_size, got "
+            f"{resolved} <= {separable} <= {size}"
+        )
+
+    disclosure = finding["progressive_disclosure"]
+    present = [
+        disclosure["secondary_family_size"] is not None,
+        disclosure["secondary_family_floor"] is not None,
+    ]
+    if any(present) and not all(present):
+        raise ValueError(
+            "secondary_family_size and secondary_family_floor must be present together or "
+            "absent together, otherwise the card renders a null"
+        )
+
+
 def validate_card(card: dict) -> bool:
     """Enforce the D1.9 schema and the full renderable shape. Raises rather than returning False.
 
@@ -700,6 +791,7 @@ def validate_card(card: dict) -> bool:
         if card["verdict"] not in VERDICTS:
             raise ValueError(f"verdict must be one of {VERDICTS}, got {card['verdict']!r}")
         _require_blocks(card, _PAIR_SHAPE, "pair card", root=card)
+        _check_pair_invariants(card)
         return True
 
     if kind == CARD_FAMILY:
@@ -721,6 +813,7 @@ def validate_card(card: dict) -> bool:
         if "provenance" not in card:
             raise ValueError("a family card must carry a provenance block")
         _require_blocks(card, {"provenance": _PAIR_SHAPE["provenance"]}, "family card")
+        _check_family_invariants(finding)
         _reject_verdict_strings(finding)
         return True
 

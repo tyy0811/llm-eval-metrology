@@ -395,3 +395,106 @@ class TestSeparableDefinitionPrefix:
         rendered = render_card(family_card_json(registered_family()))
 
         assert "Separable means the family" in rendered
+
+
+class TestCrossFieldInvariants:
+    """Validated must mean renderable **and internally consistent**.
+
+    Each field below is individually well-typed. What makes these cards wrong is the relationship
+    between fields, which per-field checks cannot see.
+    """
+
+    def mutated(self, **changes):
+        import copy
+
+        card = copy.deepcopy(pair_with(43))
+        for path, value in changes.items():
+            block, key = path.split("__")
+            card[block][key] = value
+        return card
+
+    def test_item_count_must_be_positive(self) -> None:
+        with pytest.raises(ValueError, match="n_items"):
+            render_card(self.mutated(comparison__n_items=0))
+
+    def test_discordance_cannot_exceed_the_item_count(self) -> None:
+        """Rendered as 43 of 20 instances, which is impossible."""
+        with pytest.raises(ValueError, match="n_items|observed_disagreements"):
+            render_card(self.mutated(comparison__n_items=20))
+
+    def test_the_net_edge_must_equal_the_split_difference(self) -> None:
+        """Edge 999 against a 43-wide track placed the marker at 2323 percent."""
+        with pytest.raises(ValueError, match="observed_net_edge"):
+            render_card(self.mutated(ruler__observed_net_edge=999))
+
+    def test_the_net_edge_must_match_even_when_plausible(self) -> None:
+        with pytest.raises(ValueError, match="observed_net_edge"):
+            render_card(self.mutated(ruler__observed_net_edge=5))
+
+    def test_the_required_edge_must_match_the_threshold(self) -> None:
+        """Required 4 rendered a split of 23 to 20 while calling its net edge 4."""
+        with pytest.raises(ValueError, match="required_net_edge"):
+            render_card(self.mutated(ruler__required_net_edge_at_observed=4))
+
+    def test_the_discordance_rate_must_match_the_counts(self) -> None:
+        with pytest.raises(ValueError, match="discordance_rate"):
+            render_card(self.mutated(mde__discordance_rate=0.5))
+
+    def test_an_attainable_mde_needs_its_numbers(self) -> None:
+        with pytest.raises(ValueError, match="instances|attainable"):
+            render_card(self.mutated(mde__instances=None))
+
+    def test_an_unattainable_mde_must_not_carry_numbers(self) -> None:
+        card = self.mutated(mde__status="unattainable")
+
+        with pytest.raises(ValueError, match="unattainable"):
+            render_card(card)
+
+    def test_a_verdict_must_agree_with_the_displayed_decision_rule(self) -> None:
+        """The worst of these: a false result that validated and rendered cleanly."""
+        card = pair_with(43)
+        card["verdict"] = "RESOLVED"
+
+        with pytest.raises(ValueError, match="verdict"):
+            render_card(card)
+
+    def test_the_unmutated_card_still_validates(self) -> None:
+        assert render_card(pair_with(43))
+
+
+class TestFamilyCrossFieldInvariants:
+    def family_card(self, **overrides):
+        import copy
+
+        card = copy.deepcopy(family_card_json(registered_family()))
+        for path, value in overrides.items():
+            block, key = path.split("__")
+            card["family_finding"][block][key] = value
+        return card
+
+    def test_resolved_cannot_exceed_separable(self) -> None:
+        with pytest.raises(ValueError, match="resolved_count|separable"):
+            render_card(self.family_card(observed__resolved_count=5))
+
+    def test_separable_cannot_exceed_the_family_size(self) -> None:
+        with pytest.raises(ValueError, match="separable_count|family_size"):
+            render_card(self.family_card(headline__separable_count=40))
+
+    def test_secondary_size_and_floor_must_agree_on_presence(self) -> None:
+        """A size with a null floor rendered the literal text None."""
+        with pytest.raises(ValueError, match="secondary"):
+            render_card(self.family_card(progressive_disclosure__secondary_family_floor=None))
+
+    def test_a_secondary_floor_without_a_size_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="secondary"):
+            render_card(self.family_card(progressive_disclosure__secondary_family_size=None))
+
+    def test_both_absent_is_allowed(self) -> None:
+        family = build_family_report(
+            [PairCounts(name="p", system_a="a", system_b="b", n01=1, n10=2, n_items=500)],
+            instrument="hidden-tests",
+            alpha=0.05,
+            provenance=PROVENANCE,
+        )
+
+        assert render_card(family_card_json(family))
