@@ -221,13 +221,13 @@ def analytic_separable_count(gaps: list[int], alpha: float) -> int:
     return holm(floors, alpha=alpha).n_rejected
 
 
-def check_analytic_expectation(family, aggregates: dict) -> None:
-    """PREREG D7 and D1: the headline is fixed by published rates, conditional on the set.
+def check_no_substitutions(aggregates: dict) -> None:
+    """Halt before any per-instance work if the coverage rule fired.
 
-    D1 registered the forcing as conditional on integrity gate 3 passing and the coverage rule
-    substituting nothing. Both conditions are checked here rather than assumed, because a
-    substitution changes the gap vector and the derivation would have to be redone and appended
-    as a further deviation before the primary could be reported.
+    Split out of the analytic check and called before `labels.csv` is even loaded. PREREG D1
+    makes the forced-zero result conditional on no substitution, and once a substitution has
+    happened the registered gap vector no longer describes the analysed set, so computing
+    discordances first would be work done under a premise already known to be false.
     """
     substitutions = aggregates.get("substitutions", [])
     if substitutions:
@@ -237,6 +237,17 @@ def check_analytic_expectation(family, aggregates: dict) -> None:
             "conditional on no substitution; recompute the derivation and append a deviation "
             "before reporting the primary."
         )
+
+
+def check_analytic_expectation(family, aggregates: dict) -> None:
+    """PREREG D7 and D1: the headline is fixed by published rates, conditional on the set.
+
+    D1 registered the forcing as conditional on integrity gate 3 passing and the coverage rule
+    substituting nothing. Both conditions are checked here rather than assumed, because a
+    substitution changes the gap vector and the derivation would have to be redone and appended
+    as a further deviation before the primary could be reported.
+    """
+    check_no_substitutions(aggregates)
 
     gaps = [abs(member.net_edge) for member in family.members]
     published = [entry["resolved"] for entry in aggregates["entries"]]
@@ -300,6 +311,9 @@ def main(argv: list[str] | None = None) -> int:
     print("  all derived inputs match")
 
     aggregates = json.loads((DERIVED / "aggregates.json").read_text(encoding="utf-8"))
+    # Before any per-instance work: if the coverage rule fired, the registered gap vector no
+    # longer describes this set and nothing below is worth computing.
+    check_no_substitutions(aggregates)
     unevaluated = json.loads((DERIVED / "unevaluated.json").read_text(encoding="utf-8"))
     entries = aggregates["entries"]
     table = load_long_csv(DERIVED / "labels.csv")

@@ -516,3 +516,73 @@ class TestFamilyCardProvenance:
         for card in cards["pairs"].values():
             assert card["provenance"]["source"] == "SWE-bench/experiments"
             assert card["provenance"]["secondary_source"] is None
+
+
+class TestSubstitutionHaltsBeforeAnyPerInstanceWork:
+    """Halting is not enough; it must halt before the work it invalidates.
+
+    The guard previously ran after labels were loaded and every discordance computed, so a run
+    under a premise already known to be false did the analysis anyway and only then refused to
+    write it out. The old test proved no results were written, not that no analysis ran.
+    """
+
+    def test_the_guard_cannot_depend_on_labels(self) -> None:
+        """Structural: it is given only the aggregates, so it cannot wait on the table.
+
+        Asserted on the signature rather than the source text, since a docstring mentioning
+        labels.csv is not the same as code reading it.
+        """
+        import inspect
+
+        parameters = list(inspect.signature(run.check_no_substitutions).parameters)
+
+        assert parameters == ["aggregates"]
+
+    def test_labels_are_never_loaded_when_a_substitution_fired(self, tmp_path, monkeypatch) -> None:
+        wiring = TestMainWiring()
+        derived, manifests = wiring.build_inputs(
+            tmp_path, [100, 60, 54], substitutions=[{"rank": 4, "reason": "no artifact"}]
+        )
+        wiring.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        loaded = []
+        original = run.load_long_csv
+        monkeypatch.setattr(
+            run, "load_long_csv", lambda path: (loaded.append(path), original(path))[1]
+        )
+
+        with pytest.raises(run.RunFailure, match="coverage rule fired"):
+            run.main([])
+
+        assert loaded == [], "labels were loaded despite the coverage rule having fired"
+
+    def test_no_discordance_is_computed_when_a_substitution_fired(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        wiring = TestMainWiring()
+        derived, manifests = wiring.build_inputs(
+            tmp_path, [100, 60, 54], substitutions=[{"rank": 4, "reason": "no artifact"}]
+        )
+        wiring.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        called = []
+        monkeypatch.setattr(run, "discordant_counts", lambda *a, **k: called.append(a) or (0, 0))
+
+        with pytest.raises(run.RunFailure, match="coverage rule fired"):
+            run.main([])
+
+        assert called == [], "discordance was computed under a premise known to be false"
+
+    def test_a_clean_set_still_reaches_the_analysis(self, tmp_path, monkeypatch) -> None:
+        wiring = TestMainWiring()
+        derived, manifests = wiring.build_inputs(tmp_path, [100, 60, 54])
+        wiring.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        loaded = []
+        original = run.load_long_csv
+        monkeypatch.setattr(
+            run, "load_long_csv", lambda path: (loaded.append(path), original(path))[1]
+        )
+
+        assert run.main([]) == 0
+        assert len(loaded) == 1

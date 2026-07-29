@@ -262,6 +262,12 @@ def render_family_card(card: dict) -> str:
         ("revision", card["provenance"]["pinned_revision"]),
         ("fetched", card["provenance"]["fetch_date"]),
         ("headline caveats", ", ".join(finding["disclosure"]["applies_to_headline"]) or "none"),
+        # D7 narrows D4 to the observed figures, so the card must show that it applies to them.
+        # Rendering only the headline caveats made a real disclosure invisible on the face.
+        (
+            "observed figure caveats",
+            ", ".join(finding["disclosure"]["applies_to_secondary"]) or "none",
+        ),
     ]
     if card["provenance"].get("secondary_source"):
         seal.append(

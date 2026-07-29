@@ -617,6 +617,10 @@ _PAIR_SHAPE: dict[str, tuple[tuple[str, str], ...]] = {
         ("pinned_revision", _TEXT),
         ("fetch_date", _TEXT),
         ("deviations", _LIST),
+        # Optional, but the renderer reads them, so they must be present and well-typed.
+        # Omitting one raised a KeyError at render time and a null one drew "source None".
+        ("secondary_source", "text?"),
+        ("secondary_revision", "text?"),
     ),
 }
 
@@ -705,6 +709,16 @@ def _require_blocks(card: dict, shape: dict, label: str, root: dict | None = Non
             if key not in card[block]:
                 raise ValueError(f"{label} block {block!r} is missing {key!r}")
             _check_value(card[block][key], kind, f"{label}.{block}.{key}", root)
+
+
+def _check_provenance(provenance: dict, label: str) -> None:
+    """A mixed-source card names both sources or neither, never half of one."""
+    pair = (provenance.get("secondary_source"), provenance.get("secondary_revision"))
+    if any(value is not None for value in pair) and not all(value is not None for value in pair):
+        raise ValueError(
+            f"{label}: secondary_source and secondary_revision are present together or absent "
+            f"together, got {pair!r}; the renderer would draw a partial attribution"
+        )
 
 
 def _check_pair_invariants(card: dict) -> None:
@@ -832,6 +846,7 @@ def validate_card(card: dict) -> bool:
         if card["verdict"] not in VERDICTS:
             raise ValueError(f"verdict must be one of {VERDICTS}, got {card['verdict']!r}")
         _require_blocks(card, _PAIR_SHAPE, "pair card", root=card)
+        _check_provenance(card["provenance"], "pair card")
         _check_pair_invariants(card)
         return True
 
@@ -854,6 +869,7 @@ def validate_card(card: dict) -> bool:
         if "provenance" not in card:
             raise ValueError("a family card must carry a provenance block")
         _require_blocks(card, {"provenance": _PAIR_SHAPE["provenance"]}, "family card")
+        _check_provenance(card["provenance"], "family card")
         _check_family_invariants(finding)
         _reject_verdict_strings(finding)
         return True

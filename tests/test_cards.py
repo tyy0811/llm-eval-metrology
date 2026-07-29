@@ -539,3 +539,107 @@ class TestDecisionRuleDispatch:
         assert card["test"]["decision_rule"] == "p <= threshold"
         assert card["test"]["adjusted_p_value"] is None
         assert render_card(card)
+
+
+class TestSecondaryProvenanceIsValidated:
+    """The renderer read two fields the validated shape did not cover."""
+
+    def card(self):
+        import copy
+
+        return copy.deepcopy(pair_with(43))
+
+    def test_a_missing_secondary_field_is_rejected(self) -> None:
+        """It validated, then rendering raised KeyError."""
+        card = self.card()
+        del card["provenance"]["secondary_revision"]
+
+        with pytest.raises(ValueError, match="secondary_revision"):
+            render_card(card)
+
+    def test_a_half_populated_secondary_is_rejected(self) -> None:
+        """It validated, then rendered the literal text None as an attribution."""
+        card = self.card()
+        card["provenance"]["secondary_source"] = "SWE-bench/experiments"
+
+        with pytest.raises(ValueError, match="together"):
+            render_card(card)
+
+    def test_a_non_string_secondary_source_is_rejected(self) -> None:
+        card = self.card()
+        card["provenance"]["secondary_source"] = 42
+        card["provenance"]["secondary_revision"] = "abc"
+
+        with pytest.raises(ValueError, match="secondary_source"):
+            render_card(card)
+
+    def test_both_absent_is_valid(self) -> None:
+        assert render_card(self.card())
+
+    def test_both_present_is_valid(self) -> None:
+        card = self.card()
+        card["provenance"]["secondary_source"] = "SWE-bench/experiments"
+        card["provenance"]["secondary_revision"] = "2f15350"
+
+        assert render_card(card)
+
+
+class TestMultiSourceFamilyRendering:
+    """D7 narrows D4 to the observed figures, so the face must show it applies to them."""
+
+    def members(self):
+        return [
+            PairCounts(
+                name=f"p{index}",
+                system_a=f"a{index}",
+                system_b=f"b{index}",
+                n01=15,
+                n10=15,
+                n_items=500,
+            )
+            for index in range(19)
+        ]
+
+    def multi_source_family(self):
+        family = build_family_report(
+            self.members(),
+            instrument="hidden-tests",
+            alpha=0.05,
+            provenance=PROVENANCE,
+            family_provenance=Provenance(
+                source="SWE-bench/swe-bench.github.io",
+                pinned_revision="7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+                fetch_date="2026-07-29",
+                deviations=("D4 harness comparability",),
+                secondary_source="SWE-bench/experiments",
+                secondary_revision="2f15350cd32becc4569e0d826361048555b605c0",
+            ),
+            secondary_family_size=10,
+        )
+        return family_card_json(family)
+
+    def test_the_observed_source_is_rendered(self) -> None:
+        rendered = render_card(self.multi_source_family())
+
+        assert "observed figures from" in rendered
+        assert "SWE-bench/experiments" in rendered
+
+    def test_the_headline_source_is_the_board(self) -> None:
+        rendered = render_card(self.multi_source_family())
+
+        assert "SWE-bench/swe-bench.github.io" in rendered
+
+    def test_the_secondary_caveat_reaches_the_face(self) -> None:
+        """It was in the JSON and invisible in the HTML."""
+        rendered = render_card(self.multi_source_family())
+
+        assert "D4 harness comparability" in rendered
+        assert "observed figure caveats" in rendered
+
+    def test_the_headline_is_marked_uncaveated(self) -> None:
+        rendered = render_card(self.multi_source_family())
+
+        assert "headline caveats" in rendered
+
+    def test_multi_source_family_snapshot(self) -> None:
+        assert_snapshot("snapshot_family_multisource.html", render_card(self.multi_source_family()))
