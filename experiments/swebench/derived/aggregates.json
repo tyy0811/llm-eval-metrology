@@ -1,0 +1,209 @@
+{
+  "board": "Verified",
+  "entries": [
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 4,
+      "no_logs": 1,
+      "published_rate": 79.2,
+      "rank": 1,
+      "resolved": 396,
+      "split_dir": "verified",
+      "system": "20251215_livesweagent_claude-opus-4-5"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 79.2,
+      "rank": 2,
+      "resolved": 396,
+      "split_dir": "verified",
+      "system": "20251205_sonar-foundation-agent_claude-opus-4-5"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 2,
+      "no_logs": 0,
+      "published_rate": 78.8,
+      "rank": 3,
+      "resolved": 394,
+      "split_dir": "verified",
+      "system": "20250928_trae_doubao_seed_code"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 2,
+      "no_logs": 1,
+      "published_rate": 77.4,
+      "rank": 4,
+      "resolved": 387,
+      "split_dir": "verified",
+      "system": "20251120_livesweagent_gemini-3-pro-preview"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 76.8,
+      "rank": 5,
+      "resolved": 384,
+      "split_dir": "verified",
+      "system": "20250902_atlassian-rovo-dev"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 2,
+      "no_logs": 0,
+      "published_rate": 76.8,
+      "rank": 6,
+      "resolved": 384,
+      "split_dir": "verified",
+      "system": "20250804_epam-ai-run-claude-4-sonnet"
+    },
+    {
+      "artifact_format": "per-instance-map",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 76.8,
+      "rank": 7,
+      "resolved": 384,
+      "split_dir": "bash-only",
+      "system": "20260217_mini-v2.0.0_claude-4-5-opus-high"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 76.4,
+      "rank": 8,
+      "resolved": 382,
+      "split_dir": "verified",
+      "system": "20250819_ACoder"
+    },
+    {
+      "artifact_format": "per-instance-map",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 75.8,
+      "rank": 9,
+      "resolved": 379,
+      "split_dir": "bash-only",
+      "system": "20260217_mini-v2.0.0_gemini-3-flash-high"
+    },
+    {
+      "artifact_format": "per-instance-map",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 75.8,
+      "rank": 10,
+      "resolved": 379,
+      "split_dir": "bash-only",
+      "system": "20260217_mini-v2.0.0_minimax-2-5-high"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 3,
+      "no_logs": 1,
+      "published_rate": 75.6,
+      "rank": 11,
+      "resolved": 378,
+      "split_dir": "verified",
+      "system": "20250901_warp"
+    },
+    {
+      "artifact_format": "per-instance-map",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 75.6,
+      "rank": 12,
+      "resolved": 378,
+      "split_dir": "bash-only",
+      "system": "20260217_mini-v2.0.0_claude-4-6-opus"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 1,
+      "no_logs": 0,
+      "published_rate": 75.2,
+      "rank": 13,
+      "resolved": 376,
+      "split_dir": "verified",
+      "system": "20250612_trae"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 74.8,
+      "rank": 14,
+      "resolved": 374,
+      "split_dir": "verified",
+      "system": "20250731_harness_ai"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 3,
+      "no_logs": 0,
+      "published_rate": 74.8,
+      "rank": 15,
+      "resolved": 374,
+      "split_dir": "verified",
+      "system": "20251103_sonar-foundation-agent_claude-sonnet-4-5"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 1,
+      "no_logs": 0,
+      "published_rate": 74.6,
+      "rank": 16,
+      "resolved": 373,
+      "split_dir": "verified",
+      "system": "20250720_Lingxi-v1.5_claude-4-sonnet-20250514"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 74.6,
+      "rank": 17,
+      "resolved": 373,
+      "split_dir": "verified",
+      "system": "20250915_JoyCode"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 1,
+      "no_logs": 0,
+      "published_rate": 74.4,
+      "rank": 18,
+      "resolved": 372,
+      "split_dir": "verified",
+      "system": "20250603_Refact_Agent_claude-4-sonnet"
+    },
+    {
+      "artifact_format": "resolved-id-list",
+      "no_generation": 1,
+      "no_logs": 0,
+      "published_rate": 74.4,
+      "rank": 19,
+      "resolved": 372,
+      "split_dir": "verified",
+      "system": "20251015_Prometheus_v1.2.1_gpt5"
+    },
+    {
+      "artifact_format": "per-instance-map",
+      "no_generation": 0,
+      "no_logs": 0,
+      "published_rate": 74.4,
+      "rank": 20,
+      "resolved": 372,
+      "split_dir": "bash-only",
+      "system": "20251124_mini-v1.16.0_claude-opus-4-5-20251101"
+    }
+  ],
+  "family_size": 20,
+  "instrument": "hidden-tests",
+  "n_items": 500,
+  "substitutions": []
+}

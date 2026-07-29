@@ -17,3 +17,7 @@ htmlcov/
 .ipynb_checkpoints/
 
 .DS_Store
+
+# Derived upstream data is generated, never committed (docs/DECISIONS.md D1.4). What ships is
+# the fetch script, the upstream digests, the expected checksums, and de minimis aggregates.
+experiments/*/derived/labels.csv

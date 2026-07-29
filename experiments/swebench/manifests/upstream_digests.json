@@ -1,0 +1,118 @@
+{
+  "artifacts": [
+    {
+      "sha256": "c9f7caf40ec323e41d23e6e67d7b0edba48ae5e2f980f6f14e2932a6a49c4a8b",
+      "system": "20251215_livesweagent_claude-opus-4-5",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20251215_livesweagent_claude-opus-4-5/results/results.json"
+    },
+    {
+      "sha256": "6cb862304137d5ce17a2c260cecac17c54cd668e0f9ee4ab44d5a294726562e9",
+      "system": "20251205_sonar-foundation-agent_claude-opus-4-5",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20251205_sonar-foundation-agent_claude-opus-4-5/results/results.json"
+    },
+    {
+      "sha256": "b35df378764d1d43bd833862e5d08b6be7ddfa99a3db60bba1af59edc5534ebc",
+      "system": "20250928_trae_doubao_seed_code",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250928_trae_doubao_seed_code/results/results.json"
+    },
+    {
+      "sha256": "d76733268a0e59ee9ec00e357217591372eea643dd2d27520220c375e04b97bc",
+      "system": "20251120_livesweagent_gemini-3-pro-preview",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20251120_livesweagent_gemini-3-pro-preview/results/results.json"
+    },
+    {
+      "sha256": "f82071634166a4512d8b311961f5c380585cb78eec22a27b9b773d2bedf877bd",
+      "system": "20250902_atlassian-rovo-dev",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250902_atlassian-rovo-dev/results/results.json"
+    },
+    {
+      "sha256": "baf0f288f2c33bbcb6e38dd2df0483664dd54cacfdee2ee2d1143d41efa2c820",
+      "system": "20250804_epam-ai-run-claude-4-sonnet",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250804_epam-ai-run-claude-4-sonnet/results/results.json"
+    },
+    {
+      "sha256": "e9657d90a145b9b22db233eb8a796d978ef9f8ecb9434570d0d599a635831907",
+      "system": "20260217_mini-v2.0.0_claude-4-5-opus-high",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/bash-only/20260217_mini-v2.0.0_claude-4-5-opus-high/per_instance_details.json"
+    },
+    {
+      "sha256": "8d0a9574fac4d98af2f38247a17b95e570e5fdad0f832df1f4fd9f501e536584",
+      "system": "20250819_ACoder",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250819_ACoder/results/results.json"
+    },
+    {
+      "sha256": "6e49e555537839726c02dbbefd45cdf63bbed8c138eaf349d783381ca0716e33",
+      "system": "20260217_mini-v2.0.0_gemini-3-flash-high",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/bash-only/20260217_mini-v2.0.0_gemini-3-flash-high/per_instance_details.json"
+    },
+    {
+      "sha256": "62a26211006b557f1a31371ee6cf3119be5bdaed43dcce3fe6efedc0912c012c",
+      "system": "20260217_mini-v2.0.0_minimax-2-5-high",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/bash-only/20260217_mini-v2.0.0_minimax-2-5-high/per_instance_details.json"
+    },
+    {
+      "sha256": "b8e6349a8497133c302cbec9c70468a2b98877757a17363d9d32efe9f3e6bc20",
+      "system": "20250901_warp",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250901_warp/results/results.json"
+    },
+    {
+      "sha256": "c669276c9b7c23ffe967df0d7cc9f1f6406001ae02095761ddb2ac067103430d",
+      "system": "20260217_mini-v2.0.0_claude-4-6-opus",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/bash-only/20260217_mini-v2.0.0_claude-4-6-opus/per_instance_details.json"
+    },
+    {
+      "sha256": "b9b67280f5825ba901d454d9ef6a7a79874a1637baca935c1445d2c0d47ea605",
+      "system": "20250612_trae",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250612_trae/results/results.json"
+    },
+    {
+      "sha256": "fb8d4e625a0d3becfee18dee36218ee289dbda10d2d059646d54dd7e32b4f37a",
+      "system": "20250731_harness_ai",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250731_harness_ai/results/results.json"
+    },
+    {
+      "sha256": "aedee2bbd83c762bb1bdd23fede019724a8fb0679805e405cf1c44e5dd0171e5",
+      "system": "20251103_sonar-foundation-agent_claude-sonnet-4-5",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20251103_sonar-foundation-agent_claude-sonnet-4-5/results/results.json"
+    },
+    {
+      "sha256": "3489cc4e2eb05df2375ebd3d053df1083b2771fd08b0413b0b733f64863a43ee",
+      "system": "20250720_Lingxi-v1.5_claude-4-sonnet-20250514",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250720_Lingxi-v1.5_claude-4-sonnet-20250514/results/results.json"
+    },
+    {
+      "sha256": "a324b384a8884a871e9cdce0a6fbbf442ec6b6cb64a57814baa5abcceb1882fb",
+      "system": "20250915_JoyCode",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250915_JoyCode/results/results.json"
+    },
+    {
+      "sha256": "f214e1f23a22ff83632b699cf5dfd050d316417fadcb9a1f71f30dcdbffbd075",
+      "system": "20250603_Refact_Agent_claude-4-sonnet",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20250603_Refact_Agent_claude-4-sonnet/results/results.json"
+    },
+    {
+      "sha256": "5dd5f9d1fb2f0fa14057409475d2a87a013d04391c8ef2599d8a00ba7678a826",
+      "system": "20251015_Prometheus_v1.2.1_gpt5",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/verified/20251015_Prometheus_v1.2.1_gpt5/results/results.json"
+    },
+    {
+      "sha256": "3d2381021e1f1288619084fb4196fd0077d8e6641cf6ba00e52d002d4bdecfc7",
+      "system": "20251124_mini-v1.16.0_claude-opus-4-5-20251101",
+      "url": "https://raw.githubusercontent.com/SWE-bench/experiments/2f15350cd32becc4569e0d826361048555b605c0/evaluation/bash-only/20251124_mini-v1.16.0_claude-opus-4-5-20251101/per_instance_details.json"
+    }
+  ],
+  "board": {
+    "commit": "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114",
+    "sha256": "c3bf3a74d7d67ba7e2777e197f96894601917e8e186a078133897ed3e81566e5",
+    "url": "https://raw.githubusercontent.com/SWE-bench/swe-bench.github.io/7c4289f30aa1a1c63c2e2a25aae30c16d92b5114/data/leaderboards.json"
+  },
+  "dataset": {
+    "revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+    "sha256": "a45b1fe4e2f0c8390b2b2938ac83e92ed5979000856808f3679c07812e9e6dcd",
+    "url": "https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified/resolve/c104f840cc67f8b6eec6f759ebc8b2693d585d4a/data/test-00000-of-00001.parquet"
+  },
+  "derived": {
+    "labels.csv": "9c862e5e120e43d11cd2de54378dc0aa8a99739be37ee62aafd6e37b9e33073e",
+    "rows": 10000
+  }
+}
