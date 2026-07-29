@@ -22,7 +22,10 @@ dependencies = ["numpy>=1.26", "scipy>=1.11"]
 dev = ["pytest>=7.4", "ruff>=0.5"]
 
 [tool.setuptools]
-packages = ["metrology"]
+packages = ["metrology", "metrology.cards"]
+
+[tool.setuptools.package-data]
+"metrology.cards" = ["card.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
