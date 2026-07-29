@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card reference (illustrative)</title>
+<style>
+:root {
+  --ground: #f6f8fa;
+  --panel: #ffffff;
+  --ink: #161b22;
+  --muted: #5c6b7a;
+  --rule: #d8dee6;
+  --rule-strong: #b6c0cc;
+  --accent: #2f6b75;
+  --state-resolved: #1d6f4e;
+  --state-open: #8a6516;
+  --state-equivalent: #2e5a8a;
+  --warn-ground: #fdf6e3;
+  --warn-ink: #6b4e0f;
+  --track: #e4e9ef;
+  --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #11141a; --panel: #171c24; --ink: #e6ebf2; --muted: #9aa7b5;
+    --rule: #2a323d; --rule-strong: #3d4854; --accent: #5fb3bd;
+    --state-resolved: #4fbc8a; --state-open: #d6a640; --state-equivalent: #6f9fd8;
+    --warn-ground: #241d0c; --warn-ink: #e0c67c; --track: #232a34;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #11141a; --panel: #171c24; --ink: #e6ebf2; --muted: #9aa7b5;
+  --rule: #2a323d; --rule-strong: #3d4854; --accent: #5fb3bd;
+  --state-resolved: #4fbc8a; --state-open: #d6a640; --state-equivalent: #6f9fd8;
+  --warn-ground: #241d0c; --warn-ink: #e0c67c; --track: #232a34;
+}
+:root[data-theme="light"] {
+  --ground: #f6f8fa; --panel: #ffffff; --ink: #161b22; --muted: #5c6b7a;
+  --rule: #d8dee6; --rule-strong: #b6c0cc; --accent: #2f6b75;
+  --state-resolved: #1d6f4e; --state-open: #8a6516; --state-equivalent: #2e5a8a;
+  --warn-ground: #fdf6e3; --warn-ink: #6b4e0f; --track: #e4e9ef;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font-family: var(--sans); line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+.page { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; display: flex; flex-direction: column; gap: 1.75rem; }
+
+.stamp-illustrative {
+  background: var(--warn-ground); color: var(--warn-ink);
+  border: 1px solid currentColor; border-radius: 2px;
+  padding: 0.7rem 0.9rem; font-family: var(--mono); font-size: 0.78rem;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.stamp-illustrative strong { letter-spacing: 0.12em; }
+.stamp-illustrative span { display: block; text-transform: none; letter-spacing: 0; margin-top: 0.35rem; font-size: 0.8rem; }
+
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; }
+.card > * { padding: 1.1rem 1.25rem; }
+.card > * + * { border-top: 1px solid var(--rule); }
+.card-rail { height: 3px; padding: 0; border: 0; background: var(--accent); }
+.card-rail.is-open { background: var(--state-open); }
+
+.eyebrow {
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 0.5rem;
+}
+.eyebrow::after { content: attr(data-element); color: var(--accent); margin-left: 0.6rem; opacity: 0.75; }
+
+.banner-figure { font-family: var(--mono); font-size: clamp(1.6rem, 6vw, 2.4rem); line-height: 1.1; margin: 0; text-wrap: balance; }
+.banner-figure b { font-weight: 700; }
+.banner-sub { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.scope-line { margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--muted); border-left: 2px solid var(--rule-strong); padding-left: 0.7rem; }
+
+.verdict-stamp {
+  display: inline-block; font-family: var(--mono); font-weight: 700;
+  font-size: 1.5rem; letter-spacing: 0.06em; color: var(--state-open);
+  border: 2px solid currentColor; border-radius: 2px; padding: 0.3rem 0.7rem;
+}
+.reading { margin: 0.75rem 0 0; font-size: 1rem; }
+
+.pairing { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; font-size: 0.86rem; }
+.pairing dt { color: var(--muted); }
+.pairing dd { margin: 0; font-family: var(--mono); }
+
+.strip { display: flex; height: 1.5rem; border: 1px solid var(--rule-strong); border-radius: 2px; overflow: hidden; }
+.strip-a { background: var(--accent); }
+.strip-b { background: var(--track); }
+.strip-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 1.25rem; justify-content: space-between; margin: 0.45rem 0 0; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.strip-legend span { overflow-wrap: anywhere; }
+
+.ruler { margin-top: 1.1rem; }
+.ruler-track { position: relative; height: 2.5rem; }
+.ruler-line { position: absolute; top: 1.35rem; left: 0; right: 0; height: 2px; background: var(--rule-strong); }
+.ruler-mark { position: absolute; top: 0; transform: translateX(-50%); text-align: center; }
+.ruler-mark i { display: block; width: 2px; height: 1.35rem; margin: 0 auto; background: currentColor; }
+.ruler-mark span { font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+.ruler-mark.observed { color: var(--state-open); }
+.ruler-mark.required { color: var(--accent); }
+/* At the extremes a centred label would overhang the track. The renderer applies these when a
+   marker sits at 0 (a balanced split, net edge 0) or at the far end (all disagreement one way). */
+.ruler-mark.at-start { transform: translateX(0); text-align: left; }
+.ruler-mark.at-start i { margin: 0 auto 0 0; }
+.ruler-mark.at-end { transform: translateX(-100%); text-align: right; }
+.ruler-mark.at-end i { margin: 0 0 0 auto; }
+.ruler-scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
+.what-would-it-take { margin: 1rem 0 0; padding: 0.7rem 0.85rem; background: var(--track); border-radius: 2px; font-size: 0.9rem; }
+
+details { font-size: 0.86rem; }
+summary { cursor: pointer; font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+details[open] summary { margin-bottom: 0.7rem; }
+.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 1rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+
+.seal { display: flex; flex-wrap: wrap; gap: 0.35rem 1.5rem; font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
+.seal b { color: var(--ink); font-weight: 500; }
+.note { font-size: 0.82rem; color: var(--muted); }
+h1 { font-size: 1.05rem; margin: 0 0 0.2rem; }
+h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <div class="stamp-illustrative">
+    <strong>Illustrative fixture. Not a result.</strong>
+    <span>Every value on this page is invented to exercise the layout. No experiment has run.
+    Fixtures are the one sanctioned home for illustrative numbers (PLAN.md section 2). The figures
+    below were generated by the engine from fabricated counts so the card stays internally
+    consistent, and the provenance seal on each card says so.</span>
+  </div>
+
+  <div>
+    <h1>Card reference</h1>
+    <p class="note">Two surfaces: the family summary card and one pair verdict card. The nineteen
+    row table is deferred to T3.3, where it gets its own fixture once its aggregate row schema
+    exists. Labels in teal after each eyebrow name the structural element, and are annotations for
+    review only; the renderer does not emit them.</p>
+  </div>
+
+  <!-- FAMILY SUMMARY CARD -->
+  <article class="card" aria-labelledby="family-card-title">
+    <hr class="card-rail">
+
+    <section>
+      <h2 class="eyebrow" id="family-card-title" data-element="finding banner">Benchmark resolving power</h2>
+      <p class="banner-figure"><b>0 of 19</b> adjacent pairs separable</p>
+      <p class="banner-sub">Separable means the family's Holm procedure could reject the pair
+      under best-case overlaps. Here, none could, a stronger result than the observed tests merely
+      not rejecting.</p>
+      <p class="scope-line">Adjacent pairs only. Non-adjacent comparisons are out of scope, so
+      this says nothing about rank 1 against rank 20.</p>
+    </section>
+
+    <section>
+      <p class="eyebrow" data-element="limit">The limit, and what follows from it</p>
+      <dl class="pairing">
+        <dt>Family gateway floor</dt><dd>10</dd>
+        <dt>Largest observed adjacent gap</dt><dd>7</dd>
+      </dl>
+      <p class="what-would-it-take">Every adjacent gap sits below the gateway floor of 10, so no
+      pair can open the family and none can separate at any discordance configuration.</p>
+    </section>
+
+    <section>
+      <p class="eyebrow" data-element="observed">Observed, for contrast</p>
+      <dl class="pairing">
+        <dt>Resolved by the observed test</dt><dd>0 of 19</dd>
+        <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+        <dt>Separability basis</dt><dd>Holm applied to per-pair minimum attainable p-values</dd>
+      </dl>
+    </section>
+
+    <section>
+      <details>
+        <summary data-element="progressive disclosure">Statistics</summary>
+        <dl class="kv">
+          <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+          <dt>Convention</dt><dd>doubled-tail</dd>
+          <dt>Correction</dt><dd>Holm, alpha 0.05</dd>
+          <dt>First critical value</dt><dd>0.00263157894736842</dd>
+          <dt>Secondary family size</dt><dd>10</dd>
+          <dt>Secondary gateway floor</dt><dd>9</dd>
+          <dt>Conditional on</dt><dd>integrity gate 3 passing, and the coverage rule substituting no entry</dd>
+        </dl>
+      </details>
+    </section>
+
+    <section>
+      <p class="eyebrow" data-element="provenance seal">Provenance</p>
+      <div class="seal">
+        <span>source <b>ILLUSTRATIVE, not a real run</b></span>
+        <span>revision <b>0000000illustrative</b></span>
+        <span>fetched <b>0000-00-00</b></span>
+        <span>headline caveats <b>none</b></span>
+      </div>
+    </section>
+  </article>
+
+  <!-- PAIR VERDICT CARD -->
+  <article class="card" aria-labelledby="pair-card-title">
+    <hr class="card-rail is-open">
+
+    <section>
+      <h2 class="eyebrow" id="pair-card-title" data-element="verdict stamp">Pair verdict: rank 3 against rank 4</h2>
+      <p class="verdict-stamp">NOT RESOLVED</p>
+      <p class="reading" data-element="plain-language reading">These two systems disagree on 43 of
+      500 instances, and the disagreement runs 25 to 18. That edge of 7 does not resolve the
+      comparison at this correction level; the observed test does not determine which system is
+      better.</p>
+    </section>
+
+    <section>
+      <p class="eyebrow" data-element="discordance strip">Where they disagree</p>
+      <div class="strip" role="img" aria-label="43 disagreements, 25 favour system_c and 18 favour system_d">
+        <div class="strip-a" style="flex: 25;"></div>
+        <div class="strip-b" style="flex: 18;"></div>
+      </div>
+      <p class="strip-legend"><span>25 favour system_c</span><span>18 favour system_d</span></p>
+
+      <div class="ruler">
+        <p class="eyebrow" data-element="resolution ruler">Net edge, against what it would take</p>
+        <div class="ruler-track">
+          <div class="ruler-line"></div>
+          <div class="ruler-mark observed" style="left: 16.3%;">
+            <span>observed 7</span><i></i>
+          </div>
+          <div class="ruler-mark required" style="left: 48.8%;">
+            <span>required 21</span><i></i>
+          </div>
+        </div>
+        <p class="ruler-scale"><span>0, balanced</span><span>43, all one way</span></p>
+      </div>
+
+      <p class="what-would-it-take" data-element="what would it take">To separate at this
+      discordance the split would have to reach 32 to 11, a net edge of 21. The absolute floor of
+      10 applies only when every disagreement runs one way, so quoting it here would understate the
+      requirement by half.</p>
+    </section>
+
+    <section>
+      <details>
+        <summary data-element="progressive disclosure">Statistics</summary>
+        <dl class="kv">
+          <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+          <dt>Convention</dt><dd>doubled-tail, not mid-p</dd>
+          <dt>p-value</dt><dd>0.360</dd>
+          <dt>Holm-adjusted p</dt><dd>1.000</dd>
+          <dt>Alpha</dt><dd>0.05</dd>
+          <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+          <dt>Ruler threshold</dt><dd>0.00263157894736842, the family first critical value, the same bar as the gateway floor</dd>
+          <dt>Discordance rate</dt><dd>0.086, derived from 25 plus 18 over 500</dd>
+          <dt>MDE</dt><dd>18.9 instances at alpha 0.05, power 0.80</dd>
+          <dt>MDE alpha basis</dt><dd>registered uncorrected level, not the family correction</dd>
+        </dl>
+      </details>
+    </section>
+
+    <section>
+      <p class="eyebrow" data-element="provenance seal">Provenance</p>
+      <div class="seal">
+        <span>source <b>ILLUSTRATIVE, not a real run</b></span>
+        <span>revision <b>0000000illustrative</b></span>
+        <span>fetched <b>0000-00-00</b></span>
+        <span>instrument <b>hidden-tests</b></span>
+        <span>applies to secondary figures <b>D4 harness comparability</b></span>
+      </div>
+    </section>
+  </article>
+
+</main>
+</body>
+</html>

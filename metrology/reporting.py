@@ -16,10 +16,13 @@ so a card that mixes them tells a false story.
 At 43 disagreements the required net edge is 15 at 0.05, 21 at 0.005, and 21 at 0.05/19, while the
 floor is 6, 9, and 10. Quoting an edge from one and a floor from another is a category error.
 
-**Separable is not resolved** (D1.9). Resolved means the observed Holm test rejected. Separable
-means rejection was reachable at all, which for a gap `g` means `g` clears the family floor. Every
-registered Experiment 1 pair fails both, so conflating them shows no symptom on that data and is
-still wrong.
+**Separable is not resolved** (D1.9, refined by D2.7). Resolved means the observed Holm test
+rejected. Separable means the family's Holm procedure could reject the pair under jointly
+best-case overlaps, computed by running Holm over the vector of per-pair minimum attainable
+p-values. It is deliberately not "the gap clears the family gateway floor": under gaps of 40 and
+6 the second pair sits below the floor yet is separable, because it can follow the first through
+the gateway. Every registered Experiment 1 pair fails both tests, so conflating them shows no
+symptom on that data and is still wrong.
 
 **D2.5.** A pair report is built from discordant counts, never from a precomputed discordance
 rate. A tied pair has `n01 = n10`, so its gap is zero while its discordance can be large.
@@ -516,7 +519,8 @@ def family_card_json(report: FamilyReport) -> dict:
         },
         "definitions": {
             "separable": (
-                "rejection was reachable at all, a stronger claim than a test simply not rejecting"
+                "the family's Holm procedure could reject this pair under best-case overlaps; "
+                "not separable is a stronger result than an observed test merely not rejecting"
             )
         },
         "conditionality": [
