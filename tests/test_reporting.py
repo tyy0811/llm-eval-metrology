@@ -11,6 +11,7 @@ cannot be substituted for `q`.
 
 from __future__ import annotations
 
+import copy
 import inspect
 import json
 from pathlib import Path
@@ -854,3 +855,22 @@ class TestPairProjections:
         for index in range(len(FINDINGS_COLUMNS)):
             column = [row[index] for row in findings_pair_rows(results)]
             assert set(column) != {floor}
+
+    def test_csv_cells_render_none_as_empty_string(self) -> None:
+        """The committed corpus is all-attainable with no None-valued cells, so without
+        a synthetic pair this path is dead in the suite. None is schema-valid for
+        mde.rate_difference and mde.instances (when unattainable) and
+        required_net_edge_at_observed (when n_discordant too small for any rejection)."""
+        results = copy.deepcopy(corpus_documents()["results"])
+        results["pairs"][0]["mde"] = {
+            "status": "unattainable",
+            "instances": None,
+            "rate_difference": None,
+            "max_attainable_power": 0.05,
+        }
+        results["pairs"][0]["required_net_edge_at_observed"] = None
+        rows = csv_pair_rows(results)
+        row = dict(zip(CSV_COLUMNS, rows[0], strict=True))
+        assert row["mde_instances"] == ""
+        assert row["mde_rate_difference"] == ""
+        assert row["required_net_edge_at_observed"] == ""

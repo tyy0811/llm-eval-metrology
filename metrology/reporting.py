@@ -758,6 +758,10 @@ def _csv_cell(column: str, pair: dict) -> str:
     else:
         value = pair[column]
         qualified = f"results:pairs[].{column}"
+    # None is schema-valid for mde.rate_difference, mde.instances (when unattainable),
+    # and required_net_edge_at_observed (when discordance too small). Render as empty.
+    if value is None:
+        return ""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
