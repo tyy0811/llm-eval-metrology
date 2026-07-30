@@ -774,6 +774,92 @@ def csv_pair_rows(results: dict) -> list[tuple[str, ...]]:
     return [tuple(_csv_cell(column, pair) for column in CSV_COLUMNS) for pair in results["pairs"]]
 
 
+def findings_markdown(results: dict, aggregates: dict) -> str:
+    """The README findings block, D1.6-ordered: analytic result, basis, inference,
+    counts, compact table with the D4 disclosure beside it, secondaries. Every figure
+    goes through render_number; no number is typed here."""
+    primary = results["primary"]
+    headline = primary["headline"]
+    secondary = results["secondary"]
+
+    def figure(path: str, value) -> str:
+        return render_number(path, value)
+
+    distinguishable = figure(
+        "results:primary.headline.distinguishable_count", headline["distinguishable_count"]
+    )
+    tie_forced = figure(
+        "results:primary.headline.tie_forced_not_distinguishable_count",
+        headline["tie_forced_not_distinguishable_count"],
+    )
+    real_test = figure(
+        "results:primary.headline.real_test_not_distinguishable_count",
+        headline["real_test_not_distinguishable_count"],
+    )
+    family_size = figure("results:primary.family_size", primary["family_size"])
+    floor = figure(
+        "results:primary.first_rejection_gap_floor", primary["first_rejection_gap_floor"]
+    )
+    largest = figure("results:primary.largest_observed_gap", primary["largest_observed_gap"])
+    n_items = figure("aggregates:n_items", aggregates["n_items"])
+    board_n = figure("aggregates:family_size", aggregates["family_size"])
+    affected = figure(
+        "results:secondary.no_logs_sensitivity.total_pairs_affected",
+        secondary["no_logs_sensitivity"]["total_pairs_affected"],
+    )
+    non_tied = secondary["non_tied_family"]
+    separable_count = figure("results:primary.separable_count", primary["separable_count"])
+    resolved_count = figure("results:primary.resolved_count", primary["resolved_count"])
+    non_tied_size = figure("results:secondary.non_tied_family.size", non_tied["size"])
+    non_tied_first_critical = figure(
+        "results:secondary.non_tied_family.first_critical", non_tied["first_critical"]
+    )
+    non_tied_gap_floor = figure(
+        "results:secondary.non_tied_family.gap_floor", non_tied["gap_floor"]
+    )
+    non_tied_rejected = figure("results:secondary.non_tied_family.rejected", non_tied["rejected"])
+
+    table_rows = "\n".join("| " + " | ".join(row) + " |" for row in findings_pair_rows(results))
+    header = "| " + " | ".join(FINDINGS_COLUMNS) + " |"
+    divider = "|" + "|".join("---" for _ in FINDINGS_COLUMNS) + "|"
+
+    return f"""### Experiment 1: SWE-bench Verified cannot separate its adjacent top {board_n}
+
+**{distinguishable} of {family_size} adjacent pairs are statistically distinguishable** at
+{n_items} instances under the pre-registered exact McNemar plus Holm procedure. Of the
+{family_size}, {tie_forced} are indistinguishable by tie arithmetic (equal published counts
+force p = 1 exactly), and {real_test} admit a real test and none rejects.
+
+This headline is derived from published leaderboard aggregates alone: the adjacent gaps follow
+from the published rates, the smallest attainable p-value from the registered test convention,
+and the Holm threshold from the family size. The per-instance work below characterizes the
+finding but cannot overturn it.
+
+The family gateway floor is {floor} resolved instances: no adjacent pair whose gap is below
+{floor} can produce the family's first rejection at any discordance configuration. The
+largest observed gap is {largest}. Every gap sits below the floor, so no pair can open the family.
+
+Scope: adjacent pairs only. Non-adjacent comparisons (rank 1 against rank {board_n}, for
+example) are out of scope and may well separate. Separable count {separable_count} (best case,
+D2.7), resolved count {resolved_count} (observed).
+
+{header}
+{divider}
+{table_rows}
+
+The observed discordance, p-values, intervals, and MDEs read per-instance artifacts and carry
+the D4 harness comparability caveat: submissions do not record their harness version. The
+pair identity and the resolved-count gap derive from published aggregates and do not.
+
+Secondaries, as registered: the non-tied family ({non_tied_size} pairs, first critical
+{non_tied_first_critical}, gap floor {non_tied_gap_floor}) rejects {non_tied_rejected}. The
+no_logs sensitivity drops unlogged instances pairwise and affects {affected} of the {family_size}
+pairs without changing any conclusion. The harness straddle diagnostic finds
+no adjacent pair straddles the 2024-04-15 evaluation fix; the earliest analysed submission
+postdates it by more than a year.
+"""
+
+
 _PAIR_SHAPE: dict[str, tuple[tuple[str, str], ...]] = {
     "comparison": (
         ("name", _TEXT),

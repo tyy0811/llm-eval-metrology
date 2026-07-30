@@ -31,6 +31,7 @@ from metrology.reporting import (
     build_pair_report,
     csv_pair_rows,
     family_card_json,
+    findings_markdown,
     findings_pair_rows,
     iter_numeric_leaves,
     pair_card_json,
@@ -874,3 +875,64 @@ class TestPairProjections:
         assert row["mde_instances"] == ""
         assert row["mde_rate_difference"] == ""
         assert row["required_net_edge_at_observed"] == ""
+
+
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def assert_markdown_snapshot(name: str, rendered: str) -> None:
+    """Write-then-fail, same discipline as the card snapshots (D2.8): a baseline is
+    reviewed as a diff, never blessed by the code that produced it."""
+    _FIXTURES.mkdir(exist_ok=True)
+    path = _FIXTURES / name
+    if not path.exists():  # pragma: no cover - first generation only
+        path.write_text(rendered, encoding="utf-8")
+        pytest.fail(f"baseline {name} did not exist and was written; review and re-run")
+    assert rendered == path.read_text(encoding="utf-8")
+
+
+class TestFindingsMarkdown:
+    def block(self) -> str:
+        documents = corpus_documents()
+        return findings_markdown(documents["results"], documents["aggregates"])
+
+    def test_the_lead_is_the_three_part_headline_before_any_table(self) -> None:
+        """D1.6: the analytic result leads; a reader must not meet a p-value first."""
+        block = self.block()
+        assert block.index("0 of 19") < block.index("|")
+        assert "9 are indistinguishable by tie arithmetic" in block
+        assert "10 admit a real test and none rejects" in block
+
+    def test_the_basis_is_the_public_wording(self) -> None:
+        block = self.block()
+        assert "derived from published leaderboard aggregates alone" in block
+        assert "provenance-free" not in block
+
+    def test_the_scope_line_precedes_the_table(self) -> None:
+        block = self.block()
+        assert block.index("adjacent pairs only") < block.index("| pair |")
+
+    def test_the_inference_is_rendered_not_left_to_the_reader(self) -> None:
+        block = self.block()
+        assert "family gateway floor" in block
+        assert "largest observed gap" in block
+        assert "best-case family floor" not in block
+
+    def test_d4_sits_beside_the_table_and_scopes_to_observed_quantities(self) -> None:
+        block = self.block()
+        assert "D4 harness comparability" in block
+        assert "observed discordance, p-values, intervals, and MDEs" in block
+        assert "pair identity and the resolved-count gap derive from published aggregates" in block
+
+    def test_both_registered_secondaries_and_the_straddle_surface(self) -> None:
+        block = self.block()
+        assert "non-tied" in block
+        assert "no_logs sensitivity" in block
+        assert "5 of the 19" in block
+        assert "no adjacent pair straddles" in block
+
+    def test_equivalent_never_appears(self) -> None:
+        assert "EQUIVALENT" not in self.block()
+
+    def test_snapshot(self) -> None:
+        assert_markdown_snapshot("findings_block.md", self.block())

@@ -1183,3 +1183,20 @@ threshold class is the single trimming exception, bounded by a test that no floa
 renders a committed value to bare 0 or 1. A percentage is a scaling declared at a path, never
 an implicit multiplication. Coverage is asserted in both directions against the inventory
 derived from the committed files at test time. Experiments 2 and 3 inherit this contract.
+
+---
+
+## D3.6 The pair table carries no per-pair floor column, and the reason is D2.7
+
+**Date:** 2026-07-30
+**Status:** settled by Jane (T3.3 spec section 6)
+
+The findings table is five columns: pair, gap, observed discordance, observed p, Holm-adjusted
+p. A sixth column repeating the gateway floor nineteen times would re-assert the option-1
+separability definition D2.7 superseded, in a presentation slot no schema validates; a
+computed per-pair floor column was also rejected because its values (0.25, 0.015625) are in
+neither corpus file and would fail the D1.8 membership check, while 0.5 would pass only by
+colliding with an unrelated MDE grid point. The gateway floor appears once, in the lead, with
+the rendered inference. A test asserts no rendered column consists entirely of the floor.
+Presentation slots can smuggle superseded definitions past every schema test; this entry is
+the standing reason the table stays narrow.
