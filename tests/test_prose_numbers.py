@@ -79,6 +79,25 @@ class TestTokenizer:
         assert self.violations("published at 74.4") == []
         assert self.violations("published at 74.5") != []
 
+    def test_a_sentence_final_fabricated_figure_fails(self) -> None:
+        """The previous tail lookahead (?![\\w.-]) excluded the period itself, so a
+        fabricated figure ending a sentence with no trailing space was never matched
+        and never checked; the most common English sentence shape must still be
+        caught."""
+        assert self.violations("The score improved by 12.34.") != []
+
+    def test_a_hyphen_glued_fabricated_figure_fails(self) -> None:
+        """A hyphen immediately after the numeral is not a word character, so the
+        old tail lookahead treated it the same as an identifier boundary and let a
+        fabricated figure hide behind a glued modifier; it must still be caught."""
+        assert self.violations("a 42.7-point swing") != []
+
+    def test_corpus_values_at_sentence_end_still_pass(self) -> None:
+        """The looser tail must not turn genuine corpus figures into false
+        positives merely because a sentence happens to end right after them."""
+        assert self.violations("the largest gap is 7.") == []
+        assert self.violations("the published rate is 74.4.") == []
+
 
 class TestDocumentSweep:
     def test_the_readme_passes(self) -> None:

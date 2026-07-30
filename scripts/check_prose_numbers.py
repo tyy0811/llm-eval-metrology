@@ -37,7 +37,14 @@ HEADING = re.compile(r"^#+\s", re.MULTILINE)
 TABLE_DIVIDER = re.compile(r"^\|[\s:|-]+\|$", re.MULTILINE)
 ORDERED_MARKER = re.compile(r"^(\s*)\d+\.\s", re.MULTILINE)
 LABEL = re.compile(r"\b(?:Phase|Experiment|Layer|section|item)\s+\d+(?!\.\d)\b")
-NUMERAL = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?![\w.-])")
+# The head and tail lookarounds are deliberately asymmetric. The head stays
+# (?<![\w.-]) as identifier protection, disclosed above: a leading word character
+# marks digits that belong to an identifier, not a figure. The tail is only
+# (?!\w): three-component versions, dates, and hashes are already stripped before
+# NUMERAL ever runs, so a looser tail cannot re-expose them, and a looser tail is
+# required, because a sentence-final period ("12.34.") or a glued hyphen ("42.7-point")
+# must not hide a fabricated figure just because nothing word-like follows it.
+NUMERAL = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?!\w)")
 # Inside a scanned span the word-boundary protection is deliberately dropped: the
 # span already failed whole-token verification, so digits buried in identifiers
 # (`fake999`, `solve-everything-42`) are exactly what must surface. In running
