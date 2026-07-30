@@ -14,6 +14,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -586,3 +587,89 @@ class TestSubstitutionHaltsBeforeAnyPerInstanceWork:
 
         assert run.main([]) == 0
         assert len(loaded) == 1
+
+
+@dataclass
+class _StubFamily:
+    """Only the fields the headline logic reads. Not a FamilyReport on purpose:
+    the negative control needs resolved < separable, which the registered data
+    cannot produce (both are zero there)."""
+
+    resolved_count: int
+    separable_count: int
+    n_tests: int
+
+
+REGISTERED_GAPS = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
+
+
+class TestHeadline:
+    """PREREG 2.1: the headline is reported in three parts. Spec section 1 fixes the
+    formulas; distinguishable is the OBSERVED Holm rejection count (PREREG section 5),
+    never the best-case separable count (D2.7 keeps those distinct)."""
+
+    def test_build_headline_on_the_registered_family(self) -> None:
+        family = _StubFamily(resolved_count=0, separable_count=0, n_tests=19)
+        headline = run.build_headline(REGISTERED_GAPS, family)
+        assert headline == {
+            "distinguishable_count": 0,
+            "real_test_not_distinguishable_count": 10,
+            "tie_forced_not_distinguishable_count": 9,
+        }
+
+    def test_the_three_parts_sum_to_the_family_size(self) -> None:
+        family = _StubFamily(resolved_count=0, separable_count=0, n_tests=19)
+        headline = run.build_headline(REGISTERED_GAPS, family)
+        assert sum(headline.values()) == family.n_tests
+
+    def test_check_headline_accepts_the_correct_block(self) -> None:
+        family = _StubFamily(resolved_count=0, separable_count=0, n_tests=19)
+        run.check_headline(run.build_headline(REGISTERED_GAPS, family), REGISTERED_GAPS, family)
+
+    def test_a_separable_built_headline_fails_when_the_counts_diverge(self) -> None:
+        """The control the committed data cannot provide: on gaps 40 and 6 with one
+        observed rejection, separable is 2 and resolved is 1. A headline built from
+        separable_count must fail; one built from resolved_count must pass."""
+        gaps = [40, 6]
+        family = _StubFamily(resolved_count=1, separable_count=2, n_tests=2)
+        wrong = {
+            "distinguishable_count": family.separable_count,
+            "real_test_not_distinguishable_count": 0,
+            "tie_forced_not_distinguishable_count": 0,
+        }
+        with pytest.raises(run.RunFailure, match="distinguishable"):
+            run.check_headline(wrong, gaps, family)
+        right = run.build_headline(gaps, family)
+        assert right["distinguishable_count"] == 1
+        run.check_headline(right, gaps, family)
+
+    def test_each_tampered_field_is_rejected(self) -> None:
+        family = _StubFamily(resolved_count=0, separable_count=0, n_tests=19)
+        for key in (
+            "distinguishable_count",
+            "real_test_not_distinguishable_count",
+            "tie_forced_not_distinguishable_count",
+        ):
+            headline = run.build_headline(REGISTERED_GAPS, family)
+            headline[key] += 1
+            with pytest.raises(run.RunFailure):
+                run.check_headline(headline, REGISTERED_GAPS, family)
+
+    def test_resolved_exceeding_separable_is_rejected(self) -> None:
+        """D2.7's invariant restated at the results boundary."""
+        family = _StubFamily(resolved_count=3, separable_count=2, n_tests=19)
+        headline = run.build_headline(REGISTERED_GAPS, family)
+        with pytest.raises(run.RunFailure, match="separable"):
+            run.check_headline(headline, REGISTERED_GAPS, family)
+
+    def test_the_committed_results_carry_the_headline(self) -> None:
+        results = json.loads(
+            (
+                Path(__file__).resolve().parent.parent / "experiments/swebench/results/results.json"
+            ).read_text(encoding="utf-8")
+        )
+        assert results["primary"]["headline"] == {
+            "distinguishable_count": 0,
+            "real_test_not_distinguishable_count": 10,
+            "tie_forced_not_distinguishable_count": 9,
+        }

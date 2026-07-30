@@ -221,6 +221,55 @@ def analytic_separable_count(gaps: list[int], alpha: float) -> int:
     return holm(floors, alpha=alpha).n_rejected
 
 
+def build_headline(gaps: list[int], family) -> dict:
+    """PREREG 2.1's three-part headline. Distinguishable is the OBSERVED count.
+
+    PREREG section 5 defines distinguishable as Holm-adjusted p below 0.05, which is
+    resolved_count. D2.7's separable_count is the best-case bound and must not appear
+    here; on the registered data both are zero, which is exactly how the conflation
+    would hide (spec section 1, revision 3).
+    """
+    tie_forced = sum(1 for gap in gaps if gap == 0)
+    real_test = len(gaps) - tie_forced
+    return {
+        "distinguishable_count": family.resolved_count,
+        "real_test_not_distinguishable_count": real_test - family.resolved_count,
+        "tie_forced_not_distinguishable_count": tie_forced,
+    }
+
+
+def check_headline(headline: dict, gaps: list[int], family) -> None:
+    """The five formulas from the spec, enforced here and not only in tests."""
+    tie_forced = sum(1 for gap in gaps if gap == 0)
+    checks = (
+        (
+            headline["distinguishable_count"] == family.resolved_count,
+            "distinguishable_count must equal resolved_count, the observed Holm "
+            "rejections (PREREG section 5), not the best-case separable_count",
+        ),
+        (
+            headline["tie_forced_not_distinguishable_count"] == tie_forced,
+            "tie_forced count must equal the number of zero gaps",
+        ),
+        (
+            headline["real_test_not_distinguishable_count"]
+            == (len(gaps) - tie_forced) - family.resolved_count,
+            "real_test count must equal nonzero gaps minus distinguishable",
+        ),
+        (
+            sum(headline.values()) == family.n_tests,
+            "the three parts must sum to the family size",
+        ),
+        (
+            family.resolved_count <= family.separable_count,
+            "resolved_count must not exceed separable_count (D2.7)",
+        ),
+    )
+    for passed, message in checks:
+        if not passed:
+            raise RunFailure(f"headline check failed: {message}; headline={headline}")
+
+
 def check_no_substitutions(aggregates: dict) -> None:
     """Halt before any per-instance work if the coverage rule fired.
 
@@ -366,6 +415,10 @@ def main(argv: list[str] | None = None) -> int:
     # the same path. Leaving an inline copy here once meant the tested version was dead code.
     check_analytic_expectation(family, aggregates)
 
+    gaps = [abs(member.net_edge) for member in family.members]
+    headline = build_headline(gaps, family)
+    check_headline(headline, gaps, family)
+
     pairs = []
     for index, (member, counts) in enumerate(zip(family.members, members, strict=True)):
         pair = table.paired(counts.system_a, counts.system_b, instrument=INSTRUMENT)
@@ -434,6 +487,7 @@ def main(argv: list[str] | None = None) -> int:
             "separable_count": family.separable_count,
             "resolved_count": family.resolved_count,
             "family_size": family.n_tests,
+            "headline": headline,
             "first_critical": family.first_critical,
             "first_rejection_gap_floor": family.first_rejection_gap_floor,
             "largest_observed_gap": family.largest_observed_gap,

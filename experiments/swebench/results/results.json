@@ -626,6 +626,11 @@
     "family_size": 19,
     "first_critical": 0.002631578947368421,
     "first_rejection_gap_floor": 10,
+    "headline": {
+      "distinguishable_count": 0,
+      "real_test_not_distinguishable_count": 10,
+      "tie_forced_not_distinguishable_count": 9
+    },
     "largest_observed_gap": 7,
     "needs_per_instance_data": false,
     "note": "PREREG D7: the count follows from published resolve rates alone. The per-instance work below characterizes it and cannot overturn it.",

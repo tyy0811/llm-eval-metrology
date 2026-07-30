@@ -1143,3 +1143,25 @@ rank 63 and below) are unguarded, because re-deriving them needs a fetch.
 authored prose, which is where all three of these defects lived. Numbers in authored documents
 that restate committed data should be checked against that data, and the cheap version of that is
 a test per document rather than a framework.
+
+---
+
+## D3.4 T3.2's results reopened once, additively, for the PREREG three-part headline
+
+**Date:** 2026-07-30
+**Status:** settled by Jane (design gate for T3.3, spec section 1)
+
+PREREG section 2.1 registers the headline as three parts: distinguishable, not distinguishable
+under a real test, and tie-forced. The distinguishable count's genuine home is
+`primary.resolved_count` (PREREG section 5: Holm-adjusted p below 0.05, the observed count).
+The tie-forced count of 9 had no committed home at all; the only committed 9 was
+`secondary.non_tied_family.gap_floor`, the secondary family's Holm floor, so prose citing the
+tie count would have passed the D1.8 membership check by matching a semantically unrelated
+value. `run.py` therefore gained `primary.headline` with the three counts, validated in
+`check_headline` against five formulas including `resolved_count <= separable_count`, and
+`results.json` was regenerated. No statistic changed; `cards.json` is byte-identical.
+
+The near-miss worth recording: the first draft of the schema equated distinguishable with
+`separable_count`. Both are zero on this data, so every test would have passed while encoding
+the claim D2.7 exists to keep separate. The review caught it; the synthetic negative control
+(gaps 40 and 6, one observed rejection) now tells the two apart permanently.
