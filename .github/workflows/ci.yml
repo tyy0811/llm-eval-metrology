@@ -52,6 +52,12 @@ jobs:
       - name: import-check
         run: make import-check
 
+      - name: prose-check
+        run: make prose-check
+
+      - name: report-check
+        run: make report-check
+
       # PLAN.md T0.2 requires this target to fail while it does not regenerate anything.
       # CI asserts the loud failure so the guarantee cannot rot unnoticed. Becomes a real
       # regeneration check at T3.5.

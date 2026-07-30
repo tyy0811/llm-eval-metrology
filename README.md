@@ -111,6 +111,8 @@ make test           run the test suite
 make lint           ruff check and format check
 make dash-check     authored text contains no em dashes or en dashes
 make import-check   metrology/ imports nothing beyond stdlib, numpy, scipy
+make prose-check    README and notebook prose numerals are committed corpus renderings
+make report-check   README findings block and pairs.csv match the generator
 make check          all of the above
 make reproduce      regenerate result files from committed inputs
 ```

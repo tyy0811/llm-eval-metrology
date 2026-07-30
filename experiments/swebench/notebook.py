@@ -24,7 +24,7 @@ def load(results_path, aggregates_path):
 
 
 # %% [markdown]
-# ## The three-part headline (PREREG 2.1)
+# ## The three-part headline (PREREG section 2)
 #
 # Distinguishable means the observed Holm-adjusted p fell below the family
 # alpha. Tie-forced pairs have p equal to 1 by arithmetic; the rest admitted a

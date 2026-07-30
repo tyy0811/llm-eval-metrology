@@ -1,7 +1,7 @@
 PYTHON ?= python3
 
 .DEFAULT_GOAL := help
-.PHONY: help install check-python test lint fmt dash-check import-check check reproduce
+.PHONY: help install check-python test lint fmt dash-check import-check prose-check report-check check reproduce
 
 help:
 	@echo "targets:"
@@ -12,7 +12,9 @@ help:
 	@echo "  fmt           apply ruff formatting"
 	@echo "  dash-check    authored text contains no em dashes or en dashes"
 	@echo "  import-check  metrology/ imports nothing beyond stdlib, numpy, scipy"
-	@echo "  check         test, lint, dash-check, import-check"
+	@echo "  prose-check   README and notebook prose numerals are committed corpus renderings"
+	@echo "  report-check  README findings block and pairs.csv match the generator"
+	@echo "  check         test, lint, dash-check, import-check, prose-check, report-check"
 	@echo "  reproduce     regenerate committed result files from committed inputs"
 	@echo ""
 	@echo "override the interpreter with: make check PYTHON=python3.11"
@@ -46,7 +48,13 @@ dash-check: check-python
 import-check: check-python
 	$(PYTHON) scripts/check_imports.py
 
-check: test lint dash-check import-check
+prose-check: check-python
+	$(PYTHON) scripts/check_prose_numbers.py
+
+report-check: check-python
+	$(PYTHON) experiments/swebench/report.py --check
+
+check: test lint dash-check import-check prose-check report-check
 
 # Loud-failing no-op until this target actually regenerates something (PLAN.md T0.2).
 # T3.5 wires it to the Experiment 1 rebuild, and T8.4 chains all three experiments.
