@@ -17,14 +17,24 @@ EN_DASH = chr(0x2013)
 
 
 def test_repo_authored_text_is_clean() -> None:
-    found, checked = check_dashes.scan([REPO_ROOT])
+    """Over default discovery, not an rglob of the tree: the gate's own scope.
 
-    assert checked > 0, "the checker walked no files, so a pass would be meaningless"
+    Scanning REPO_ROOT directly re-included gitignored scratch files, so this
+    test failed working copies that make dash-check itself accepted (Jane's
+    T3.3 follow-up, finding 3).
+    """
+    files = check_dashes.default_discovery()
+
+    assert files, "the checker discovered no files, so a pass would be meaningless"
+    found = []
+    for path in files:
+        found.extend(check_dashes.violations_in_text(path.read_text(encoding="utf-8"), path))
     assert [v.render() for v in found] == []
 
 
 def test_checker_exits_zero_on_the_real_repo() -> None:
-    assert check_dashes.main([str(REPO_ROOT)]) == 0
+    """main([]) is the exact invocation make dash-check runs."""
+    assert check_dashes.main([]) == 0
 
 
 def test_em_dash_is_flagged(tmp_path: Path) -> None:

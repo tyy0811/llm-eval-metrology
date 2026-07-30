@@ -149,6 +149,7 @@ class TestAlternativeResults:
         results["mde_grid"]["points"][0]["status"] = "unattainable"
         results["secondary"]["no_logs_sensitivity"]["family"]["resolved_count"] = 1
         results["secondary"]["no_logs_sensitivity"]["family"]["separable_count"] = 2
+        results["secondary"]["harness_straddle"]["straddling_pairs"] = [{"rank_a": 3, "rank_b": 4}]
         (tmp_path / "results.json").write_text(
             json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
@@ -169,6 +170,14 @@ class TestAlternativeResults:
         out = run_notebook(capsys, *self.sandbox(tmp_path))
         assert "conclusion unchanged" not in out
         assert "separable 2, resolved 1" in out
+
+    def test_a_nonempty_straddle_list_renders_pair_identifiers(self, tmp_path, capsys) -> None:
+        """The registered straddle shape is a list of rank dictionaries; joining
+        them raised TypeError (Jane's T3.3 follow-up, finding 1). The ranks render
+        through the aggregate rank path, the same registry contract as every other
+        figure."""
+        out = run_notebook(capsys, *self.sandbox(tmp_path))
+        assert "straddling pairs: rank_3_vs_4" in out
 
     def test_the_committed_conclusion_is_also_read(self, capsys) -> None:
         out = run_notebook(capsys)

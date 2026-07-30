@@ -977,58 +977,216 @@ class TestFormatterStrictness:
 class TestFindingsMarkdownConditionals:
     """The corpus-masked branches (Jane's T3.3 review, finding 1). Every committed
     count that gates a sentence is zero or empty, so the alternative branches were
-    dead in the suite: one printed an admitted total that was actually the
-    not-distinguishable count, one crashed joining rank dictionaries, and the
-    heading asserted an outcome the data below it could contradict.
+    dead in the suite.
+
+    The synthetic family is the D2.7 counterexample, gaps 40 and 6, with every
+    related field derived from the engine rather than typed: the first fixture was
+    hand-assembled and internally impossible (floor 10 against largest gap 7 with
+    two separable pairs, one primary rejection with zero non-tied rejections), so
+    the snapshot permanently approved contradictory measurement output (Jane's
+    follow-up, finding 2).
     """
 
-    def synthetic_nonzero(self) -> tuple[dict, dict]:
+    def synthetic_d27_family(self) -> tuple[dict, dict]:
+        from metrology.multiplicity import holm
+        from metrology.paired import (
+            mcnemar_exact_from_counts,
+            minimum_gap_for_threshold,
+            p_value_floor,
+        )
+        from metrology.power import mde_paired_binary
+        from metrology.reporting import required_net_edge_at
+
         documents = corpus_documents()
-        results = copy.deepcopy(documents["results"])
-        aggregates = copy.deepcopy(documents["aggregates"])
-        results["primary"]["headline"] = {
-            "distinguishable_count": 1,
-            "real_test_not_distinguishable_count": 9,
-            "tie_forced_not_distinguishable_count": 9,
+        n_items = 500
+        alpha = 0.05
+        systems = [
+            ("2025-01-15_alpha_agent", 440, "2025-01-15"),
+            ("2024-05-01_beta_agent", 400, "2024-05-01"),
+            ("2023-11-01_gamma_agent", 394, "2023-11-01"),
+        ]
+        entries = [
+            {
+                "artifact_format": "resolved-id-list",
+                "checked": False,
+                "checked_is_malformed": False,
+                "checked_raw": None,
+                "date": date,
+                "no_generation": 0,
+                "no_logs": 0,
+                "published_rate": resolved / 5,
+                "rank": rank,
+                "resolved": resolved,
+                "split_dir": "verified",
+                "system": system,
+            }
+            for rank, (system, resolved, date) in enumerate(systems, start=1)
+        ]
+        aggregates = {
+            "board": "Verified",
+            "entries": entries,
+            "family_size": len(entries),
+            "instrument": "hidden-tests",
+            "n_items": n_items,
+            "substitutions": [],
         }
-        results["primary"]["separable_count"] = 2
-        results["primary"]["resolved_count"] = 1
-        results["secondary"]["harness_straddle"]["straddling_pairs"] = [{"rank_a": 3, "rank_b": 4}]
-        results["secondary"]["harness_straddle"]["entries_predating_the_fix"] = 1
-        results["secondary"]["no_logs_sensitivity"]["family"]["resolved_count"] = 1
+
+        counts = [(5, 45), (22, 28)]
+        gaps = [entries[i]["resolved"] - entries[i + 1]["resolved"] for i in range(2)]
+        assert [n10 - n01 for n01, n10 in counts] == gaps == [40, 6]
+
+        names = [f"rank_{i + 1}_vs_{i + 2}" for i in range(2)]
+        observed = holm(
+            tuple(
+                (name, mcnemar_exact_from_counts(n01=n01, n10=n10).p_value)
+                for name, (n01, n10) in zip(names, counts, strict=True)
+            ),
+            alpha=alpha,
+        )
+        best_case = holm(
+            tuple((name, p_value_floor(gap)) for name, gap in zip(names, gaps, strict=True)),
+            alpha=alpha,
+        )
+        first_critical = alpha / len(names)
+        floor = minimum_gap_for_threshold(first_critical)
+        mde = mde_paired_binary(n=n_items, discordance_rate=0.1, alpha=alpha, target_power=0.8)
+
+        pairs = []
+        for index, (name, (n01, n10)) in enumerate(zip(names, counts, strict=True)):
+            n_discordant = n01 + n10
+            pairs.append(
+                {
+                    "adjusted_p_value": observed.adjusted[index],
+                    "bootstrap": {
+                        "estimate": gaps[index] / n_items,
+                        "high": gaps[index] / n_items + 0.02,
+                        "level": 0.95,
+                        "low": gaps[index] / n_items - 0.02,
+                        "n_resamples": 10000,
+                        "seed": 2026072790 + index,
+                        "unit": "instance",
+                    },
+                    "discordance_rate": n_discordant / n_items,
+                    "mde": {
+                        "instances": mde.instances,
+                        "max_attainable_power": mde.max_attainable_power,
+                        "rate_difference": mde.rate_difference,
+                        "status": mde.status,
+                    },
+                    "n01": n01,
+                    "n10": n10,
+                    "n_discordant": n_discordant,
+                    "name": name,
+                    "net_edge": n10 - n01,
+                    "p_value": observed.p_values[index],
+                    "required_net_edge_at_observed": required_net_edge_at(
+                        n_discordant, threshold=first_critical
+                    ),
+                    "separable": best_case.rejected[index],
+                    "system_a": entries[index]["system"],
+                    "system_b": entries[index + 1]["system"],
+                    "verdict": "RESOLVED" if observed.rejected[index] else "NOT RESOLVED",
+                }
+            )
+
+        results = copy.deepcopy(documents["results"])
+        results["pairs"] = pairs
+        results["primary"] = {
+            **results["primary"],
+            "family_size": len(names),
+            "first_critical": first_critical,
+            "first_rejection_gap_floor": floor,
+            "headline": {
+                "distinguishable_count": observed.n_rejected,
+                "real_test_not_distinguishable_count": len(names) - observed.n_rejected,
+                "tie_forced_not_distinguishable_count": 0,
+            },
+            "largest_observed_gap": max(gaps),
+            "resolved_count": observed.n_rejected,
+            "separable_count": best_case.n_rejected,
+        }
+        results["secondary"] = {
+            "harness_straddle": {
+                "boundary": "2024-04-15",
+                "earliest_submission_date": "2023-11-01",
+                "entries_predating_the_fix": 1,
+                "straddling_pairs": [{"rank_a": 2, "rank_b": 3}],
+            },
+            "no_logs_sensitivity": {
+                "family": {
+                    "alpha": alpha,
+                    "first_critical": first_critical,
+                    "resolved_count": observed.n_rejected,
+                    "separable_count": best_case.n_rejected,
+                    "size": len(names),
+                },
+                "pairs": [
+                    {
+                        "adjusted_p_value": observed.adjusted[index],
+                        "dropped_instances": index,
+                        "n01": pairs[index]["n01"],
+                        "n10": pairs[index]["n10"],
+                        "n_items": n_items - index,
+                        "p_value": observed.p_values[index],
+                        "rank_a": index + 1,
+                        "rank_b": index + 2,
+                        "rejected": observed.rejected[index],
+                    }
+                    for index in range(2)
+                ],
+                "rule": results["secondary"]["no_logs_sensitivity"]["rule"],
+                "total_pairs_affected": 1,
+            },
+            "non_tied_family": {
+                "first_critical": first_critical,
+                "gap_floor": floor,
+                "rejected": observed.n_rejected,
+                "size": len(names),
+            },
+        }
+
+        # Coherence the first fixture lacked, asserted so it cannot rot silently.
+        assert results["primary"]["separable_count"] == 2
+        assert results["primary"]["resolved_count"] == 1
+        assert results["primary"]["largest_observed_gap"] > floor
+        assert (
+            results["secondary"]["non_tied_family"]["rejected"]
+            == results["primary"]["resolved_count"]
+        )
         return results, aggregates
 
     def test_admitted_total_comes_from_the_non_tied_family(self) -> None:
-        """With one rejection the first draft printed "9 admit a real test, of
-        which 1 reject": the 9 is admitted-minus-distinguishable, not admitted.
-        Ten pairs admit the test whatever the rejections do."""
-        results, aggregates = self.synthetic_nonzero()
+        """With one rejection the first draft printed the not-distinguishable count
+        as the admitted total. Both pairs here admit the test; one rejects."""
+        results, aggregates = self.synthetic_d27_family()
         block = findings_markdown(results, aggregates)
-        assert "10 admit a real test, with 1 rejecting and 9 not" in block
-        assert "9 admit a real test" not in block
+        assert "2 admit a real test, with 1 rejecting and 1 not" in block
 
     def test_a_nonempty_straddle_list_renders_pair_identifiers(self) -> None:
         """The entries are rank dictionaries; joining them raised TypeError before
-        any sentence rendered."""
-        results, aggregates = self.synthetic_nonzero()
+        any sentence rendered, and the ranks now render through the aggregate rank
+        path rather than raw interpolation."""
+        results, aggregates = self.synthetic_d27_family()
         block = findings_markdown(results, aggregates)
-        assert "rank_3_vs_4 straddling the 2024-04-15" in block
+        assert "rank_2_vs_3 straddling the 2024-04-15" in block
         assert "no adjacent pair straddles" not in block
 
     def test_the_heading_is_outcome_neutral(self) -> None:
         """The first draft's heading said "cannot separate" even when the body
-        reported separable pairs. The same question heads both outcomes."""
+        reported separable pairs. The same question shape heads both outcomes."""
         documents = corpus_documents()
         zero_block = findings_markdown(documents["results"], documents["aggregates"])
-        results, aggregates = self.synthetic_nonzero()
+        results, aggregates = self.synthetic_d27_family()
         nonzero_block = findings_markdown(results, aggregates)
-        assert zero_block.splitlines()[0] == nonzero_block.splitlines()[0]
+        prefix = "### Experiment 1: can SWE-bench Verified separate its adjacent top"
+        assert zero_block.splitlines()[0].startswith(prefix)
+        assert nonzero_block.splitlines()[0].startswith(prefix)
         assert "cannot separate" not in zero_block.splitlines()[0]
 
     def test_the_floor_inference_reports_separability_when_present(self) -> None:
-        results, aggregates = self.synthetic_nonzero()
+        results, aggregates = self.synthetic_d27_family()
         block = findings_markdown(results, aggregates)
-        assert "2 of 19 pairs could reject under best-case overlaps" in block
+        assert "2 of 2 pairs could reject under best-case overlaps." in block
         assert "no pair can open the family" not in block
 
     def test_no_measured_numeral_is_hand_typed(self) -> None:
@@ -1041,7 +1199,7 @@ class TestFindingsMarkdownConditionals:
         assert "p = 1" not in block
 
     def test_nonzero_snapshot(self) -> None:
-        results, aggregates = self.synthetic_nonzero()
+        results, aggregates = self.synthetic_d27_family()
         assert_markdown_snapshot(
             "findings_block_nonzero.md", findings_markdown(results, aggregates)
         )

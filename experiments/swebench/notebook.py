@@ -170,7 +170,19 @@ def print_secondaries(results):
         straddle["entries_predating_the_fix"],
     )
     straddling_pairs = straddle["straddling_pairs"]
-    straddling_text = ", ".join(straddling_pairs) if straddling_pairs else "none"
+    # Rank dictionaries, never joined raw: each rank renders through the aggregate
+    # rank path and the pair keeps its rank_a_vs_rank_b identifier shape.
+    straddling_text = (
+        ", ".join(
+            "rank_"
+            + render_number("aggregates:entries[].rank", pair["rank_a"])
+            + "_vs_"
+            + render_number("aggregates:entries[].rank", pair["rank_b"])
+            for pair in straddling_pairs
+        )
+        if straddling_pairs
+        else "none"
+    )
     print(
         f"harness straddle: {predating} analysed entries predate the "
         f"{straddle['boundary']} fix; straddling pairs: {straddling_text}"

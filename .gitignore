@@ -26,3 +26,6 @@ htmlcov/
 # derived file is now ignored unless someone deliberately permits it here.
 experiments/*/derived/*
 !experiments/*/derived/aggregates.json
+
+# Claude Code session metadata is runtime state, never a repository artifact.
+.claude/

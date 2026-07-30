@@ -892,15 +892,17 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
         )
     else:
         # Each entry is a {"rank_a": int, "rank_b": int} record (run.py's
-        # straddle_diagnostic); joining the dicts raised TypeError. The ranks form
-        # the pair identifier, the same rank_a_vs_rank_b construction run.py uses
-        # for pair names. The committed list is empty, so these numeric paths do
-        # not exist in the corpus and cannot be registered without failing the
-        # registry's dead-rule direction; the day a corpus commits a straddling
-        # pair, the completeness test forces the registration and this switches to
-        # rendered figures.
+        # straddle_diagnostic); joining the dicts raised TypeError. The ranks are
+        # board ranks, so they render through the aggregate rank path like every
+        # other figure, and the pair keeps run.py's rank_a_vs_rank_b identifier
+        # shape. Raw interpolation here bypassed the module's own every-figure
+        # contract (Jane's T3.3 follow-up, finding 1).
         joined_pairs = ", ".join(
-            f"rank_{pair['rank_a']}_vs_{pair['rank_b']}" for pair in straddling_pairs
+            "rank_"
+            + figure("aggregates:entries[].rank", pair["rank_a"])
+            + "_vs_"
+            + figure("aggregates:entries[].rank", pair["rank_b"])
+            for pair in straddling_pairs
         )
         straddle_sentence = (
             f"The harness straddle diagnostic finds {joined_pairs} straddling the {boundary} "
