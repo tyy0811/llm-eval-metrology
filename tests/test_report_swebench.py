@@ -48,6 +48,18 @@ class TestValidateSources:
         with pytest.raises(report.ReportFailure):
             report.validate_sources(results, AGGREGATES)
 
+    def test_a_reordered_aggregates_array_fails(self) -> None:
+        """No sorting anywhere (spec section 7): the aggregates array order is
+        the authority. Shuffling the entries list, ranks left untouched, must
+        be reported rather than silently repaired by sorting back into rank
+        order, which would bless the exact defect this validation exists to
+        catch."""
+        aggregates = copy(AGGREGATES)
+        entries = aggregates["entries"]
+        entries[0], entries[1] = entries[1], entries[0]
+        with pytest.raises(report.ReportFailure, match="rank order"):
+            report.validate_sources(RESULTS, aggregates)
+
     def test_a_net_edge_disagreeing_with_aggregates_fails(self) -> None:
         """The gap column claims aggregate provenance; a net_edge that drifts from
         the adjacent resolved counts must halt, not render uncaveated."""
@@ -84,20 +96,12 @@ class TestCsvText:
         test made against the wrong error."""
         assert "EQUIVALENT" not in report.render_csv_text(RESULTS)
 
-    def test_two_swapped_columns_fail_the_check(self, tmp_path: Path) -> None:
-        """Byte comparison catches any column permutation via the header line; this
-        pins that expectation so a header-normalising 'fix' cannot weaken it."""
-        text = report.render_csv_text(RESULTS)
-        lines = text.split("\n")
-        header = lines[0].split(",")
-        header[3], header[4] = header[4], header[3]  # n01 and n10
-        swapped = "\n".join([",".join(header), *lines[1:]])
-        assert swapped != text
-
     def test_row_swap_is_caught_by_the_projection(self) -> None:
         """Pairs 2 and 7 agree on every McNemar and MDE field and differ only in
-        bootstrap.low and bootstrap.seed (measured; spec section 10), so this swap
-        is invisible to any set-membership comparison."""
+        bootstrap.low and bootstrap.seed (measured; spec section 10). They also
+        differ in name and systems, so swapping the two whole records is caught
+        here by the name-adjacency check in validate_sources, not by the
+        McNemar or MDE fields the CSV set-membership contrast is about."""
         results = copy(RESULTS)
         results["pairs"][1], results["pairs"][6] = results["pairs"][6], results["pairs"][1]
         with pytest.raises(report.ReportFailure):
@@ -180,6 +184,25 @@ class TestModes:
         lines = text.split("\n")
         lines[1], lines[2] = lines[2], lines[1]
         paths["csv"].write_text("\n".join(lines), encoding="utf-8")
+        assert report.main(self.argv("--check", paths)) != 0
+
+    def test_two_swapped_columns_fail_the_check(self, tmp_path: Path) -> None:
+        """n01 and n10 (columns 3 and 4) swapped in every line, header and all 19
+        data rows, so the byte difference is not confined to the header alone.
+        report.py --check must catch it via byte comparison against the freshly
+        rendered projection."""
+        paths = self.sandbox(tmp_path, RESULTS)
+        assert report.main(self.argv("--write", paths)) == 0
+        lines = paths["csv"].read_text(encoding="utf-8").split("\n")
+        swapped_lines = []
+        for line in lines:
+            if not line:
+                swapped_lines.append(line)
+                continue
+            cells = line.split(",")
+            cells[3], cells[4] = cells[4], cells[3]
+            swapped_lines.append(",".join(cells))
+        paths["csv"].write_text("\n".join(swapped_lines), encoding="utf-8")
         assert report.main(self.argv("--check", paths)) != 0
 
     def test_write_refuses_and_leaves_destinations_untouched_on_a_bad_source(

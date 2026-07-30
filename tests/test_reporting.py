@@ -923,6 +923,7 @@ class TestFindingsMarkdown:
         assert "D4 harness comparability" in block
         assert "observed discordance, p-values, intervals, and MDEs" in block
         assert "pair identity and the resolved-count gap derive from published aggregates" in block
+        assert "every column" not in block
 
     def test_both_registered_secondaries_and_the_straddle_surface(self) -> None:
         block = self.block()

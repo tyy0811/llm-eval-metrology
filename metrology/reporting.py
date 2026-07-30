@@ -818,6 +818,50 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
         "results:secondary.non_tied_family.gap_floor", non_tied["gap_floor"]
     )
     non_tied_rejected = figure("results:secondary.non_tied_family.rejected", non_tied["rejected"])
+    no_logs_family = secondary["no_logs_sensitivity"]["family"]
+    no_logs_resolved = figure(
+        "results:secondary.no_logs_sensitivity.family.resolved_count",
+        no_logs_family["resolved_count"],
+    )
+
+    # Conditional on the headline, not hardcoded: a real Holm rejection changes what
+    # the real-test-admitting pairs actually did.
+    if headline["distinguishable_count"] == 0:
+        real_test_clause = f"{real_test} admit a real test and none rejects"
+    else:
+        real_test_clause = f"{real_test} admit a real test, of which {distinguishable} reject"
+
+    # Mirrors family_card_json's inference branch exactly: a nonzero separable_count
+    # means some gap does clear the floor, so "every gap sits below it" would be false.
+    if primary["separable_count"] == 0:
+        floor_inference = "Every gap sits below the floor, so no pair can open the family."
+    else:
+        floor_inference = (
+            f"{separable_count} of {family_size} pairs could reject under best-case overlaps; "
+            f"the family gateway floor is {floor} and the largest observed gap is {largest}."
+        )
+
+    straddle = secondary["harness_straddle"]
+    boundary = straddle["boundary"]
+    earliest_submission_date = straddle["earliest_submission_date"]
+    predating = figure(
+        "results:secondary.harness_straddle.entries_predating_the_fix",
+        straddle["entries_predating_the_fix"],
+    )
+    straddling_pairs = straddle["straddling_pairs"]
+    if not straddling_pairs:
+        straddle_sentence = (
+            f"The harness straddle diagnostic finds no adjacent pair straddles the {boundary} "
+            f"evaluation fix ({predating} analysed entries predate it); the earliest analysed "
+            f"submission date is {earliest_submission_date}."
+        )
+    else:
+        joined_pairs = ", ".join(straddling_pairs)
+        straddle_sentence = (
+            f"The harness straddle diagnostic finds {joined_pairs} straddles the {boundary} "
+            f"evaluation fix ({predating} analysed entries predate it); the earliest analysed "
+            f"submission date is {earliest_submission_date}."
+        )
 
     table_rows = "\n".join("| " + " | ".join(row) + " |" for row in findings_pair_rows(results))
     header = "| " + " | ".join(FINDINGS_COLUMNS) + " |"
@@ -828,7 +872,7 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
 **{distinguishable} of {family_size} adjacent pairs are statistically distinguishable** at
 {n_items} instances under the pre-registered exact McNemar plus Holm procedure. Of the
 {family_size}, {tie_forced} are indistinguishable by tie arithmetic (equal published counts
-force p = 1 exactly), and {real_test} admit a real test and none rejects.
+force p = 1 exactly), and {real_test_clause}.
 
 This headline is derived from published leaderboard aggregates alone: the adjacent gaps follow
 from the published rates, the smallest attainable p-value from the registered test convention,
@@ -837,7 +881,7 @@ finding but cannot overturn it.
 
 The family gateway floor is {floor} resolved instances: no adjacent pair whose gap is below
 {floor} can produce the family's first rejection at any discordance configuration. The
-largest observed gap is {largest}. Every gap sits below the floor, so no pair can open the family.
+largest observed gap is {largest}. {floor_inference}
 
 Scope: adjacent pairs only. Non-adjacent comparisons (rank 1 against rank {board_n}, for
 example) are out of scope and may well separate. Separable count {separable_count} (best case,
@@ -854,9 +898,7 @@ pair identity and the resolved-count gap derive from published aggregates and do
 Secondaries, as registered: the non-tied family ({non_tied_size} pairs, first critical
 {non_tied_first_critical}, gap floor {non_tied_gap_floor}) rejects {non_tied_rejected}. The
 no_logs sensitivity drops unlogged instances pairwise and affects {affected} of the {family_size}
-pairs without changing any conclusion. The harness straddle diagnostic finds
-no adjacent pair straddles the 2024-04-15 evaluation fix; the earliest analysed submission
-postdates it by more than a year.
+pairs and rejects {no_logs_resolved} pairs after Holm. {straddle_sentence}
 """
 
 

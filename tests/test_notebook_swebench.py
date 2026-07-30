@@ -80,6 +80,26 @@ class TestStructure:
         assert "no_logs sensitivity" in out
         assert "harness straddle" in out
 
+    def test_d4_scope_is_precise(self, capsys) -> None:
+        """D4 qualifies the observed per-instance quantities only; pair identity
+        derives from published aggregates and must not be swept in by an
+        unscoped 'every column' phrasing (spec section 5)."""
+        out = run_notebook(capsys)
+        assert "pair identity derives from published aggregates" in out
+        assert "applies to every column" not in out
+
+    def test_equivalent_never_appears(self, capsys) -> None:
+        out = run_notebook(capsys)
+        assert "EQUIVALENT" not in out
+
+    def test_sensitivity_prints_one_line_per_affected_pair(self, capsys) -> None:
+        """total_pairs_affected is 5 (measured); each affected pair gets its own
+        line rather than being reported only as an aggregate count (review
+        minor 11, spec section 9 item 5)."""
+        out = run_notebook(capsys)
+        lines = [line for line in out.splitlines() if line.startswith("sensitivity pair ")]
+        assert len(lines) == 5
+
     def test_the_three_part_headline_leads(self, capsys) -> None:
         out = run_notebook(capsys)
         first_figure_line = out.index("distinguishable")

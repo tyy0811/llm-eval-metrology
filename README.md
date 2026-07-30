@@ -64,9 +64,7 @@ pair identity and the resolved-count gap derive from published aggregates and do
 Secondaries, as registered: the non-tied family (10 pairs, first critical
 0.005, gap floor 9) rejects 0. The
 no_logs sensitivity drops unlogged instances pairwise and affects 5 of the 19
-pairs without changing any conclusion. The harness straddle diagnostic finds
-no adjacent pair straddles the 2024-04-15 evaluation fix; the earliest analysed submission
-postdates it by more than a year.
+pairs and rejects 0 pairs after Holm. The harness straddle diagnostic finds no adjacent pair straddles the 2024-04-15 evaluation fix (0 analysed entries predate it); the earliest analysed submission date is 2025-06-03.
 <!-- findings:end -->
 
 ## What this repo is
@@ -93,13 +91,14 @@ Three consumers drive the engine, easiest first. The first has run; the other tw
 | second | SummEval | Validation flagship: dense expert gold means the truth is known, so it measures the method |
 | third | LLM-AggreFact | Repeats the recipe in a domain buyers care about, with a real cheap instrument |
 
-Each gets a pre-registration (`experiments/<name>/PREREG.md`) pushed before its data is fetched.
+Each gets a pre-registration (`experiments/<name>/PREREG.md`) pushed after structural recon of
+its sources but before any committed derived-data artifact or per-instance comparison exists.
 
 ## Layout
 
 ```
 metrology/     engine core, pyodide-portable, numpy and scipy only
-experiments/   one directory per experiment: PREREG.md, fetch.py, run.py, results/
+experiments/   one directory per experiment: PREREG.md, fetch.py, run.py, report.py, notebook.py, results/, derived/ (untracked table)
 docs/          recon notes, instruments.md, DECISIONS.md, generated validation report
 tests/
 ```

@@ -61,7 +61,11 @@ def print_headline(results):
 
 # %%
 def print_pairs(results):
-    print("caveat: D4 harness comparability applies to every column below")
+    print(
+        "caveat: D4 harness comparability applies to the observed discordance, "
+        "p-values, intervals, and MDEs below; pair identity derives from "
+        "published aggregates"
+    )
     for pair in results["pairs"]:
         n01 = render_number("results:pairs[].n01", pair["n01"])
         n10 = render_number("results:pairs[].n10", pair["n10"])
@@ -124,15 +128,30 @@ def print_secondaries(results):
         sensitivity["total_pairs_affected"],
     )
     print(f"no_logs sensitivity: {affected} pairs affected, conclusion unchanged")
+    for pair in sensitivity["pairs"]:
+        if pair["dropped_instances"] > 0:
+            rank_a = render_number(
+                "results:secondary.no_logs_sensitivity.pairs[].rank_a", pair["rank_a"]
+            )
+            rank_b = render_number(
+                "results:secondary.no_logs_sensitivity.pairs[].rank_b", pair["rank_b"]
+            )
+            dropped = render_number(
+                "results:secondary.no_logs_sensitivity.pairs[].dropped_instances",
+                pair["dropped_instances"],
+            )
+            print(f"sensitivity pair rank {rank_a} vs {rank_b}: dropped {dropped}")
 
     straddle = results["secondary"]["harness_straddle"]
     predating = render_number(
         "results:secondary.harness_straddle.entries_predating_the_fix",
         straddle["entries_predating_the_fix"],
     )
+    straddling_pairs = straddle["straddling_pairs"]
+    straddling_text = ", ".join(straddling_pairs) if straddling_pairs else "none"
     print(
         f"harness straddle: {predating} analysed entries predate the "
-        f"{straddle['boundary']} fix; straddling pairs: {straddle['straddling_pairs']}"
+        f"{straddle['boundary']} fix; straddling pairs: {straddling_text}"
     )
 
 

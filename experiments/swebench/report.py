@@ -47,8 +47,21 @@ def validate_sources(results: dict, aggregates: dict) -> None:
     before this module ever ran. The net-edge check is what lets the gap column
     render uncaveated by D4: it proves the per-instance figure equals the
     aggregate-derived gap, which integrity gate 3 promised and this re-verifies.
+
+    No sorting anywhere (spec section 7): the aggregates array order is itself the
+    authority, so a reordered aggregates array is exactly the defect this function
+    must report. Sorting it back into rank order would repair the defect silently
+    instead, which is why rank order is checked first, against the array as given.
     """
-    entries = sorted(aggregates["entries"], key=lambda entry: entry["rank"])
+    entries = aggregates["entries"]
+    for index, entry in enumerate(entries):
+        expected_rank = index + 1
+        if entry["rank"] != expected_rank:
+            raise ReportFailure(
+                f"aggregates entries[{index}] has rank {entry['rank']!r}, expected "
+                f"{expected_rank!r}; rank order is validated against the array as given, "
+                "never repaired by sorting"
+            )
     pairs = results["pairs"]
     if len(pairs) != len(entries) - 1:
         raise ReportFailure(

@@ -21,6 +21,7 @@ STALE_CLAIMS = (
     "None has run.",
     "fails loudly until an experiment produces results",
     "This repo ships derived label tables",
+    "before its data is fetched",
 )
 
 
