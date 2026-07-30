@@ -55,7 +55,7 @@ LABEL = re.compile(r"\b(?:Phase|Experiment|Layer|section|item)\s+\d+(?!\.\d)\b")
 # cannot re-expose them, and a looser tail is required, because a sentence-final
 # period ("12.34.") or a glued hyphen ("42.7-point") must not hide a fabricated
 # figure just because nothing word-like follows it.
-NUMERAL = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?!\w)")
+NUMERAL = re.compile(r"(?<![\w.-])[+-]?\d+(?:\.\d+)?(?!\w)")
 # Four narrower shapes NUMERAL's guards cannot see, each closing one evasion:
 # - ORDINAL: the suffix letter (st/nd/rd/th) is a word character, so NUMERAL's
 #   tail guard refuses "42nd" outright. The digit group must still be a member.
@@ -68,9 +68,9 @@ NUMERAL = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?!\w)")
 # - SCI_NOTATION: no corpus rendering contains an exponent, so this is always a
 #   violation, membership aside.
 ORDINAL = re.compile(r"(?<![\w.-])(\d+)(?:st|nd|rd|th)\b")
-HYPHEN_GLUED = re.compile(r"(?<=-)(\d+(?:\.\d+)?)(?!\w)")
+HYPHEN_GLUED = re.compile(r"(?<=\w-)(\d+(?:\.\d+)?)(?!\w)")
 LEADING_DOT = re.compile(r"(?<![\w.\d])\.\d+")
-SCI_NOTATION = re.compile(r"\b\d+(?:\.\d+)?[eE]-?\d+\b")
+SCI_NOTATION = re.compile(r"\b\d+(?:\.\d+)?[eE][+-]?\d+\b")
 # Inside a scanned span the word-boundary protection is deliberately dropped: the
 # span already failed whole-token verification, so digits buried in identifiers
 # (`fake999`, `solve-everything-42`) are exactly what must surface. In running
@@ -111,9 +111,27 @@ def build_context(repo_root: Path) -> dict:
 
 
 def _strip_atomic_tokens(text: str) -> str:
-    for pattern in (URL, LINK_TARGET, DATE, SYSTEM_NAME, VERSION, HEX_HASH, TASK_ID):
+    """Grammar-bounded atomics only. SYSTEM_NAME is deliberately absent: a
+    system-shaped token is stripped in running prose only after its membership in
+    the analysed board is verified (_strip_system_names), because the shape alone
+    is forgeable and carries arbitrary digits."""
+    for pattern in (URL, LINK_TARGET, DATE, VERSION, HEX_HASH, TASK_ID):
         text = pattern.sub(" ", text)
     return text
+
+
+def _strip_system_names(text: str, context: dict, violations: list[str]) -> str:
+    """Blank real system names; flag fabricated ones rather than hiding them."""
+
+    def handle(match: re.Match) -> str:
+        token = match.group(0)
+        if token not in context["systems"]:
+            violations.append(
+                f"system-shaped token {token!r} is not an entry on the analysed board"
+            )
+        return " "
+
+    return SYSTEM_NAME.sub(handle, text)
 
 
 def _span_is_whole_token(content: str, context: dict) -> bool:
@@ -156,6 +174,7 @@ def check_text(text: str, context: dict) -> list[str]:
         return " "
 
     text = INLINE_CODE.sub(handle_span, text)
+    text = _strip_system_names(text, context, violations)
     text = _strip_atomic_tokens(text)
     text = HEADING.sub(" ", text)
     text = TABLE_DIVIDER.sub(" ", text)
@@ -163,9 +182,13 @@ def check_text(text: str, context: dict) -> list[str]:
     text = LABEL.sub(" ", text)
 
     for match in NUMERAL.finditer(text):
-        token = match.group(0).lstrip("-")
+        # The complete signed token is compared: -0.022 is a corpus rendering and
+        # 0.022 is not, while -7 is not a rendering even though 7 is, and no
+        # registry format ever emits a leading plus. Stripping the sign inverted
+        # both cases (Jane's T3.3 review, finding 4).
+        token = match.group(0)
         if token not in context["corpus"]:
-            violations.append(f"numeral {match.group(0)!r} is not a committed corpus rendering")
+            violations.append(f"numeral {token!r} is not a committed corpus rendering")
 
     # Second pass, same stripped text: the four closed-evasion shapes NUMERAL's
     # guards cannot see (module docstring and the block above NUMERAL explain why).

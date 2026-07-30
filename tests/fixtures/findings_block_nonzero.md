@@ -1,9 +1,9 @@
 ### Experiment 1: can SWE-bench Verified separate its adjacent top 20?
 
-**Statistically distinguishable adjacent pairs: 0 of 19**, at
+**Statistically distinguishable adjacent pairs: 1 of 19**, at
 500 instances under the pre-registered exact McNemar plus Holm procedure. Of the
 19, 9 are indistinguishable by tie arithmetic (equal published counts
-force the exact test to its maximum p-value), and 10 admit a real test and none rejects.
+force the exact test to its maximum p-value), and 10 admit a real test, with 1 rejecting and 9 not.
 
 This headline is derived from published leaderboard aggregates alone: the adjacent gaps follow
 from the published rates, the smallest attainable p-value from the registered test convention,
@@ -12,11 +12,11 @@ finding but cannot overturn it.
 
 The family gateway floor is 10 resolved instances: no adjacent pair whose gap is below
 10 can produce the family's first rejection at any discordance configuration. The
-largest observed gap is 7. Every gap sits below the floor, so no pair can open the family.
+largest observed gap is 7. 2 of 19 pairs could reject under best-case overlaps.
 
 Scope: adjacent pairs only. Non-adjacent comparisons (rank 1 against rank
 20, for example) are out of scope and may well separate. Separable count
-0 (best case, D2.7), resolved count 0 (observed).
+2 (best case, D2.7), resolved count 1 (observed).
 
 | pair | resolved-count gap | observed discordance | observed p-value | Holm-adjusted p-value |
 |---|---|---|---|---|
@@ -47,4 +47,4 @@ pair identity and the resolved-count gap derive from published aggregates and do
 Secondaries, as registered: the non-tied family (10 pairs, first critical
 0.005, gap floor 9) rejects 0. The
 no_logs sensitivity drops unlogged instances pairwise, affects 5 of the 19
-pairs, and its Holm pass rejects 0 of them. The harness straddle diagnostic finds no adjacent pair straddles the 2024-04-15 evaluation fix (analysed entries predating it: 0); the earliest analysed submission date is 2025-06-03.
+pairs, and its Holm pass rejects 1 of them. The harness straddle diagnostic finds rank_3_vs_4 straddling the 2024-04-15 evaluation fix (analysed entries predating it: 1); the earliest analysed submission date is 2025-06-03.

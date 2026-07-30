@@ -73,7 +73,12 @@ def print_pairs(results):
         low = render_number("results:pairs[].bootstrap.low", pair["bootstrap"]["low"])
         high = render_number("results:pairs[].bootstrap.high", pair["bootstrap"]["high"])
         level = render_number("results:pairs[].bootstrap.level", pair["bootstrap"]["level"])
-        mde = render_number("results:pairs[].mde.instances", pair["mde"]["instances"])
+        # An unattainable MDE stores None, a state the engine validates as legal;
+        # rendering it must say so rather than crash (Jane's review, finding 3).
+        if pair["mde"]["instances"] is None:
+            mde = "n/a"
+        else:
+            mde = render_number("results:pairs[].mde.instances", pair["mde"]["instances"])
         print(
             f"pair {pair['name']}: n01 {n01}, n10 {n10}, p {p}, "
             f"interval [{low}, {high}] at {level}, mde {mde} instances "
@@ -91,7 +96,10 @@ def print_grid(results):
         rate = render_number(
             "results:mde_grid.points[].discordance_rate", point["discordance_rate"]
         )
-        instances = render_number("results:mde_grid.points[].instances", point["instances"])
+        if point["instances"] is None:
+            instances = "n/a"
+        else:
+            instances = render_number("results:mde_grid.points[].instances", point["instances"])
         print(f"grid discordance {rate}: mde {instances} instances ({point['status']})")
 
 
@@ -127,7 +135,21 @@ def print_secondaries(results):
         "results:secondary.no_logs_sensitivity.total_pairs_affected",
         sensitivity["total_pairs_affected"],
     )
-    print(f"no_logs sensitivity: {affected} pairs affected, conclusion unchanged")
+    family = sensitivity["family"]
+    separable = render_number(
+        "results:secondary.no_logs_sensitivity.family.separable_count",
+        family["separable_count"],
+    )
+    resolved = render_number(
+        "results:secondary.no_logs_sensitivity.family.resolved_count",
+        family["resolved_count"],
+    )
+    # The stored family result is the conclusion; printing "unchanged" was an
+    # assertion the data never made (Jane's review, finding 3).
+    print(
+        f"no_logs sensitivity: {affected} pairs affected; "
+        f"sensitivity family separable {separable}, resolved {resolved}"
+    )
     for pair in sensitivity["pairs"]:
         if pair["dropped_instances"] > 0:
             rank_a = render_number(

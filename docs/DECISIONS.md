@@ -1200,3 +1200,35 @@ colliding with an unrelated MDE grid point. The gateway floor appears once, in t
 the rendered inference. A test asserts no rendered column consists entirely of the floor.
 Presentation slots can smuggle superseded definitions past every schema test; this entry is
 the standing reason the table stays narrow.
+
+---
+
+## D3.7 A correction to D3.6, and the T3.3 corrective pass recorded
+
+**Date:** 2026-07-31
+**Status:** settled by Jane
+**Corrects:** one sentence in D3.6, which stands as written per the append-only rule
+
+**The correction.** D3.6 says a computed per-pair floor column was rejected partly because "0.5
+would pass only by colliding with an unrelated MDE grid point". Under the registry as shipped
+that collision does not exist: the grid point renders through the rate3 class as `0.500`, so the
+bare string `0.5` is not a corpus rendering and would have been rejected outright. The decision's
+conclusion is unchanged and its grounds are actually stronger: the floor values have no
+source-qualified corpus path at all, and reporting must not recompute them.
+
+**The corrective pass this entry accompanies.** Jane's review of T3.3 found five corpus-masked
+defects, all in code whose committed-data path was correct: the findings generator's conditional
+branches (an admitted-total conflation, a TypeError on nonempty straddle lists, an
+outcome-asserting heading, two hand-typed numerals), a cross-file validator that accepted an
+inverted leaderboard because abs() erased direction, a notebook that crashed on legal unattainable
+MDEs and asserted a conclusion the data never made, a prose checker that compared unsigned tokens
+(rejecting the genuine -0.022 while passing a fabricated -7) and stripped system-shaped tokens
+without board membership, and a registry formatter that silently repaired 9.9, True, and "9" into
+figures. Each fix carries a negative control that was run red first; the two generator snapshots
+now include a synthetic nonzero-result baseline so the alternative branches stay exercised.
+
+**Also settled here.** `scripts/check_dashes.py` default discovery follows
+`git ls-files --cached --others --exclude-standard` with the authored-suffix filter, so gitignored
+scratch and generated directories no longer fail the gate for files that cannot reach the
+repository, while a new unignored authored file is still caught and an explicitly supplied path is
+still scanned.

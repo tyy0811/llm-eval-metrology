@@ -589,14 +589,40 @@ _LIST = "list"
 # "pow3" three fixed decimals; "sig6" six significant digits with trailing zeros
 # trimmed (safe only because no committed threshold is 0 or 1; a test bounds this).
 
+
+def _exact_int(value) -> str:
+    """The registry repairs nothing: 9.9 is not 9, True is not 1, "9" is not 9.
+
+    str(int(value)) accepted all three and silently wrote the repaired string,
+    which the membership checker would then accept as the one approved rendering
+    of a value that never existed.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"int format requires an exact non-boolean integer, got {value!r}")
+    return str(value)
+
+
+def _finite_float(value, spec: str) -> str:
+    """Float classes take real finite numbers of either numeric kind, nothing else.
+
+    nan and inf previously rendered as literal text, which a generator would have
+    interpolated into prose without complaint.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"float format requires a finite number, got {value!r}")
+    if not math.isfinite(value):
+        raise ValueError(f"float format requires a finite value, got {value!r}")
+    return format(value, spec)
+
+
 _FORMATTERS = {
-    "int": lambda value: str(int(value)),
-    "pct1": lambda value: f"{value:.1f}",
-    "inst1": lambda value: f"{value:.1f}",
-    "rate3": lambda value: f"{value:.3f}",
-    "p3": lambda value: f"{value:.3f}",
-    "pow3": lambda value: f"{value:.3f}",
-    "sig6": lambda value: f"{value:.6g}",
+    "int": _exact_int,
+    "pct1": lambda value: _finite_float(value, ".1f"),
+    "inst1": lambda value: _finite_float(value, ".1f"),
+    "rate3": lambda value: _finite_float(value, ".3f"),
+    "p3": lambda value: _finite_float(value, ".3f"),
+    "pow3": lambda value: _finite_float(value, ".3f"),
+    "sig6": lambda value: _finite_float(value, ".6g"),
 }
 
 NUMBER_FORMATS: dict[str, str] = {
@@ -825,11 +851,21 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
     )
 
     # Conditional on the headline, not hardcoded: a real Holm rejection changes what
-    # the real-test-admitting pairs actually did.
+    # the real-test-admitting pairs actually did. The admitted total is the non-tied
+    # family size, NOT the headline's real-test count: that count is "admitted minus
+    # distinguishable", so with one rejection the first draft printed "9 admit a real
+    # test, of which 1 reject" while ten pairs admitted the test (Jane's review,
+    # finding 1). Equal only while distinguishable is zero, the corpus-masked case.
+    admitted = non_tied_size
+    # Number-invariant phrasing throughout: the synthetic-baseline review caught
+    # "1 of 19 pairs are", "of which 1 reject", and "1 analysed entries", so every
+    # branch is worded to read correctly at any count.
     if headline["distinguishable_count"] == 0:
-        real_test_clause = f"{real_test} admit a real test and none rejects"
+        real_test_clause = f"{admitted} admit a real test and none rejects"
     else:
-        real_test_clause = f"{real_test} admit a real test, of which {distinguishable} reject"
+        real_test_clause = (
+            f"{admitted} admit a real test, with {distinguishable} rejecting and {real_test} not"
+        )
 
     # Mirrors family_card_json's inference branch exactly: a nonzero separable_count
     # means some gap does clear the floor, so "every gap sits below it" would be false.
@@ -837,8 +873,7 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
         floor_inference = "Every gap sits below the floor, so no pair can open the family."
     else:
         floor_inference = (
-            f"{separable_count} of {family_size} pairs could reject under best-case overlaps; "
-            f"the family gateway floor is {floor} and the largest observed gap is {largest}."
+            f"{separable_count} of {family_size} pairs could reject under best-case overlaps."
         )
 
     straddle = secondary["harness_straddle"]
@@ -852,14 +887,24 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
     if not straddling_pairs:
         straddle_sentence = (
             f"The harness straddle diagnostic finds no adjacent pair straddles the {boundary} "
-            f"evaluation fix ({predating} analysed entries predate it); the earliest analysed "
+            f"evaluation fix (analysed entries predating it: {predating}); the earliest analysed "
             f"submission date is {earliest_submission_date}."
         )
     else:
-        joined_pairs = ", ".join(straddling_pairs)
+        # Each entry is a {"rank_a": int, "rank_b": int} record (run.py's
+        # straddle_diagnostic); joining the dicts raised TypeError. The ranks form
+        # the pair identifier, the same rank_a_vs_rank_b construction run.py uses
+        # for pair names. The committed list is empty, so these numeric paths do
+        # not exist in the corpus and cannot be registered without failing the
+        # registry's dead-rule direction; the day a corpus commits a straddling
+        # pair, the completeness test forces the registration and this switches to
+        # rendered figures.
+        joined_pairs = ", ".join(
+            f"rank_{pair['rank_a']}_vs_{pair['rank_b']}" for pair in straddling_pairs
+        )
         straddle_sentence = (
-            f"The harness straddle diagnostic finds {joined_pairs} straddles the {boundary} "
-            f"evaluation fix ({predating} analysed entries predate it); the earliest analysed "
+            f"The harness straddle diagnostic finds {joined_pairs} straddling the {boundary} "
+            f"evaluation fix (analysed entries predating it: {predating}); the earliest analysed "
             f"submission date is {earliest_submission_date}."
         )
 
@@ -867,12 +912,19 @@ def findings_markdown(results: dict, aggregates: dict) -> str:
     header = "| " + " | ".join(FINDINGS_COLUMNS) + " |"
     divider = "|" + "|".join("---" for _ in FINDINGS_COLUMNS) + "|"
 
-    return f"""### Experiment 1: SWE-bench Verified cannot separate its adjacent top {board_n}
+    # The heading is a neutral question: the first draft asserted "cannot separate"
+    # unconditionally, which the conditional branches below could contradict. The
+    # body's lead sentence carries the answer, whatever it is. The scope example
+    # ranks are read from the aggregates rather than typed (Jane's review, finding 1).
+    first_rank = figure("aggregates:entries[].rank", aggregates["entries"][0]["rank"])
+    last_rank = figure("aggregates:entries[].rank", aggregates["entries"][-1]["rank"])
 
-**{distinguishable} of {family_size} adjacent pairs are statistically distinguishable** at
+    return f"""### Experiment 1: can SWE-bench Verified separate its adjacent top {board_n}?
+
+**Statistically distinguishable adjacent pairs: {distinguishable} of {family_size}**, at
 {n_items} instances under the pre-registered exact McNemar plus Holm procedure. Of the
 {family_size}, {tie_forced} are indistinguishable by tie arithmetic (equal published counts
-force p = 1 exactly), and {real_test_clause}.
+force the exact test to its maximum p-value), and {real_test_clause}.
 
 This headline is derived from published leaderboard aggregates alone: the adjacent gaps follow
 from the published rates, the smallest attainable p-value from the registered test convention,
@@ -883,9 +935,9 @@ The family gateway floor is {floor} resolved instances: no adjacent pair whose g
 {floor} can produce the family's first rejection at any discordance configuration. The
 largest observed gap is {largest}. {floor_inference}
 
-Scope: adjacent pairs only. Non-adjacent comparisons (rank 1 against rank {board_n}, for
-example) are out of scope and may well separate. Separable count {separable_count} (best case,
-D2.7), resolved count {resolved_count} (observed).
+Scope: adjacent pairs only. Non-adjacent comparisons (rank {first_rank} against rank
+{last_rank}, for example) are out of scope and may well separate. Separable count
+{separable_count} (best case, D2.7), resolved count {resolved_count} (observed).
 
 {header}
 {divider}
@@ -897,8 +949,8 @@ pair identity and the resolved-count gap derive from published aggregates and do
 
 Secondaries, as registered: the non-tied family ({non_tied_size} pairs, first critical
 {non_tied_first_critical}, gap floor {non_tied_gap_floor}) rejects {non_tied_rejected}. The
-no_logs sensitivity drops unlogged instances pairwise and affects {affected} of the {family_size}
-pairs and rejects {no_logs_resolved} pairs after Holm. {straddle_sentence}
+no_logs sensitivity drops unlogged instances pairwise, affects {affected} of the {family_size}
+pairs, and its Holm pass rejects {no_logs_resolved} of them. {straddle_sentence}
 """
 
 

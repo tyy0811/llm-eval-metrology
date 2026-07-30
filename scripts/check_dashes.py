@@ -16,6 +16,7 @@ Exit status is 0 when authored text is clean and 1 when it is not.
 from __future__ import annotations
 
 import argparse
+import subprocess
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -96,7 +97,11 @@ def is_text_file(path: Path) -> bool:
 
 
 def iter_text_files(root: Path) -> Iterator[Path]:
-    """Yield authored text files under `root`, skipping build and vcs directories."""
+    """Yield authored text files under `root`, skipping build and vcs directories.
+
+    Used for explicitly supplied paths, so a gitignored file named on the command
+    line is still scanned; only default discovery consults git.
+    """
     if root.is_file():
         if is_text_file(root):
             yield root
@@ -108,6 +113,29 @@ def iter_text_files(root: Path) -> Iterator[Path]:
             continue
         if is_text_file(path):
             yield path
+
+
+def default_discovery() -> list[Path]:
+    """Authored files git would carry: tracked plus untracked-unignored.
+
+    An rglob walk scanned gitignored scratch and generated directories, so the
+    gate failed working copies for files that could never reach the repository,
+    while this form still catches a new unignored file before anyone commits it
+    (Jane's T3.3 ruling on the dash checker).
+    """
+    listing = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    files = []
+    for line in listing.stdout.splitlines():
+        path = REPO_ROOT / line
+        if path.is_file() and is_text_file(path):
+            files.append(path)
+    return sorted(files)
 
 
 def violations_in_text(text: str, path: Path) -> list[Violation]:
@@ -144,12 +172,22 @@ def main(argv: list[str] | None = None) -> int:
         "paths",
         nargs="*",
         type=Path,
-        default=[REPO_ROOT],
-        help="files or directories to check (default: the repo root)",
+        help="files or directories to check (default: git-listed authored files)",
     )
     args = parser.parse_args(argv)
 
-    found, checked = scan([p for p in args.paths if p.exists()])
+    if args.paths:
+        found, checked = scan([p for p in args.paths if p.exists()])
+    else:
+        found = []
+        checked = 0
+        for path in default_discovery():
+            checked += 1
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            found.extend(violations_in_text(text, path))
     if found:
         print(f"dash-check FAILED: {len(found)} occurrence(s) in authored text")
         for violation in found:

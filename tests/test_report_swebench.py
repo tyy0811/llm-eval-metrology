@@ -215,3 +215,44 @@ class TestModes:
         assert report.main(self.argv("--write", paths)) != 0
         assert paths["readme"].read_text(encoding="utf-8") == before_readme
         assert not paths["csv"].exists()
+
+
+class TestValidateSourcesArithmetic:
+    """Jane's T3.3 review, finding 2: abs() on the gap accepted an inverted board,
+    and nothing tied net_edge to the discordant counts it is supposed to summarize.
+    """
+
+    def test_an_inverted_adjacent_pair_fails(self) -> None:
+        """A lower-ranked entry with MORE resolved instances passed before, because
+        abs() erased the direction the published ordering asserts. Inverting at the
+        final entry leaves every earlier pair untouched, so the failure is the
+        inversion itself and not a knock-on mismatch."""
+        results = copy(RESULTS)
+        aggregates = copy(AGGREGATES)
+        entries = aggregates["entries"]
+        entries[-1]["resolved"] = entries[-2]["resolved"] + 8
+        results["pairs"][-1]["net_edge"] = 8
+        with pytest.raises(report.ReportFailure, match="nonincreasing"):
+            report.validate_sources(results, aggregates)
+
+    def test_net_edge_must_equal_n10_minus_n01(self) -> None:
+        results = copy(RESULTS)
+        pair = results["pairs"][2]
+        pair["n01"], pair["n10"] = pair["n10"], pair["n01"]
+        with pytest.raises(report.ReportFailure, match="n10 - n01"):
+            report.validate_sources(results, AGGREGATES)
+
+    def test_n_discordant_must_equal_n01_plus_n10(self) -> None:
+        results = copy(RESULTS)
+        results["pairs"][4]["n_discordant"] += 1
+        with pytest.raises(report.ReportFailure, match="n01 [+] n10"):
+            report.validate_sources(results, AGGREGATES)
+
+    def test_n_discordant_must_not_exceed_n_items(self) -> None:
+        results = copy(RESULTS)
+        pair = results["pairs"][4]
+        pair["n01"] = 400
+        pair["n10"] = 400 + pair["net_edge"]
+        pair["n_discordant"] = pair["n01"] + pair["n10"]
+        with pytest.raises(report.ReportFailure, match="n_items"):
+            report.validate_sources(results, AGGREGATES)

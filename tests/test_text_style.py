@@ -89,3 +89,31 @@ def test_binary_and_unknown_extensions_are_skipped(tmp_path: Path) -> None:
 
     assert found == []
     assert checked == 0
+
+
+class TestDefaultDiscovery:
+    """Jane's T3.3 ruling: default discovery follows git ls-files (tracked plus
+    untracked-unignored), so gitignored scratch and generated directories stop
+    failing the gate for out-of-repo reasons while every authored file that could
+    reach the repository stays protected. Explicit paths remain scannable.
+    """
+
+    def test_an_ignored_scratch_file_is_excluded_by_default(self, request) -> None:
+        scratch = REPO_ROOT / "experiments" / "swebench" / "derived" / "dash_scratch.md"
+        request.addfinalizer(lambda: scratch.unlink(missing_ok=True))
+        scratch.write_text("scratch " + chr(0x2014) + " with an em dash\n", encoding="utf-8")
+        files = set(check_dashes.default_discovery())
+        assert scratch not in files
+        assert check_dashes.main([]) == 0
+
+    def test_an_unignored_new_markdown_file_is_caught(self, request) -> None:
+        stray = REPO_ROOT / "dash_stray_control.md"
+        request.addfinalizer(lambda: stray.unlink(missing_ok=True))
+        stray.write_text("stray " + chr(0x2014) + " with an em dash\n", encoding="utf-8")
+        assert check_dashes.main([]) == 1
+
+    def test_an_explicit_path_is_still_scannable_even_when_ignored(self, request) -> None:
+        scratch = REPO_ROOT / "experiments" / "swebench" / "derived" / "dash_scratch.md"
+        request.addfinalizer(lambda: scratch.unlink(missing_ok=True))
+        scratch.write_text("scratch " + chr(0x2014) + " with an em dash\n", encoding="utf-8")
+        assert check_dashes.main([str(scratch)]) == 1

@@ -937,3 +937,111 @@ class TestFindingsMarkdown:
 
     def test_snapshot(self) -> None:
         assert_markdown_snapshot("findings_block.md", self.block())
+
+
+class TestFormatterStrictness:
+    """The registry boundary must not repair malformed values (Jane's T3.3 review,
+    finding 5). str(int(9.9)) silently wrote "9", True became "1", and "9" the
+    string became 9 the figure; each of those is a wrong value laundered into the
+    one string the checker will then accept. nan and inf rendered as literal text.
+    """
+
+    def test_int_format_rejects_fractional_floats(self) -> None:
+        with pytest.raises(TypeError, match="exact non-boolean integer"):
+            render_number("aggregates:n_items", 9.9)
+
+    def test_int_format_rejects_booleans(self) -> None:
+        with pytest.raises(TypeError, match="exact non-boolean integer"):
+            render_number("aggregates:n_items", True)
+
+    def test_int_format_rejects_strings(self) -> None:
+        with pytest.raises(TypeError, match="exact non-boolean integer"):
+            render_number("aggregates:n_items", "9")
+
+    def test_float_formats_reject_booleans_and_strings(self) -> None:
+        for bad in (True, "0.5"):
+            with pytest.raises(TypeError, match="finite number"):
+                render_number("results:pairs[].p_value", bad)
+
+    def test_float_formats_reject_nan_and_inf(self) -> None:
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with pytest.raises(ValueError, match="finite"):
+                render_number("results:pairs[].p_value", bad)
+
+    def test_float_formats_still_accept_exact_ints(self) -> None:
+        """JSON can hold an integral float's value as an int; the float classes
+        accept both numeric kinds, they only refuse bool and non-finite."""
+        assert render_number("results:pairs[].adjusted_p_value", 1) == "1.000"
+
+
+class TestFindingsMarkdownConditionals:
+    """The corpus-masked branches (Jane's T3.3 review, finding 1). Every committed
+    count that gates a sentence is zero or empty, so the alternative branches were
+    dead in the suite: one printed an admitted total that was actually the
+    not-distinguishable count, one crashed joining rank dictionaries, and the
+    heading asserted an outcome the data below it could contradict.
+    """
+
+    def synthetic_nonzero(self) -> tuple[dict, dict]:
+        documents = corpus_documents()
+        results = copy.deepcopy(documents["results"])
+        aggregates = copy.deepcopy(documents["aggregates"])
+        results["primary"]["headline"] = {
+            "distinguishable_count": 1,
+            "real_test_not_distinguishable_count": 9,
+            "tie_forced_not_distinguishable_count": 9,
+        }
+        results["primary"]["separable_count"] = 2
+        results["primary"]["resolved_count"] = 1
+        results["secondary"]["harness_straddle"]["straddling_pairs"] = [{"rank_a": 3, "rank_b": 4}]
+        results["secondary"]["harness_straddle"]["entries_predating_the_fix"] = 1
+        results["secondary"]["no_logs_sensitivity"]["family"]["resolved_count"] = 1
+        return results, aggregates
+
+    def test_admitted_total_comes_from_the_non_tied_family(self) -> None:
+        """With one rejection the first draft printed "9 admit a real test, of
+        which 1 reject": the 9 is admitted-minus-distinguishable, not admitted.
+        Ten pairs admit the test whatever the rejections do."""
+        results, aggregates = self.synthetic_nonzero()
+        block = findings_markdown(results, aggregates)
+        assert "10 admit a real test, with 1 rejecting and 9 not" in block
+        assert "9 admit a real test" not in block
+
+    def test_a_nonempty_straddle_list_renders_pair_identifiers(self) -> None:
+        """The entries are rank dictionaries; joining them raised TypeError before
+        any sentence rendered."""
+        results, aggregates = self.synthetic_nonzero()
+        block = findings_markdown(results, aggregates)
+        assert "rank_3_vs_4 straddling the 2024-04-15" in block
+        assert "no adjacent pair straddles" not in block
+
+    def test_the_heading_is_outcome_neutral(self) -> None:
+        """The first draft's heading said "cannot separate" even when the body
+        reported separable pairs. The same question heads both outcomes."""
+        documents = corpus_documents()
+        zero_block = findings_markdown(documents["results"], documents["aggregates"])
+        results, aggregates = self.synthetic_nonzero()
+        nonzero_block = findings_markdown(results, aggregates)
+        assert zero_block.splitlines()[0] == nonzero_block.splitlines()[0]
+        assert "cannot separate" not in zero_block.splitlines()[0]
+
+    def test_the_floor_inference_reports_separability_when_present(self) -> None:
+        results, aggregates = self.synthetic_nonzero()
+        block = findings_markdown(results, aggregates)
+        assert "2 of 19 pairs could reject under best-case overlaps" in block
+        assert "no pair can open the family" not in block
+
+    def test_no_measured_numeral_is_hand_typed(self) -> None:
+        """The tie-arithmetic parenthetical carried a hand-typed p = 1 and the
+        scope example hand-typed rank 1; the first now needs no numeral and the
+        second reads the board's first and last ranks."""
+        documents = corpus_documents()
+        block = findings_markdown(documents["results"], documents["aggregates"])
+        assert "force the exact test to its maximum p-value" in block
+        assert "p = 1" not in block
+
+    def test_nonzero_snapshot(self) -> None:
+        results, aggregates = self.synthetic_nonzero()
+        assert_markdown_snapshot(
+            "findings_block_nonzero.md", findings_markdown(results, aggregates)
+        )

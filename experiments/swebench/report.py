@@ -77,12 +77,38 @@ def validate_sources(results: dict, aggregates: dict) -> None:
             )
         if pair["system_a"] != first["system"] or pair["system_b"] != second["system"]:
             raise ReportFailure(f"pair {index} systems do not match the aggregate adjacency order")
+        # Signed, not abs(): the published board is nonincreasing in resolved count
+        # by construction, and abs() would accept an inverted adjacent pair, the
+        # exact defect this check exists to report (Jane's T3.3 review, finding 2).
         gap = first["resolved"] - second["resolved"]
-        if pair["net_edge"] != abs(gap):
+        if gap < 0:
+            raise ReportFailure(
+                f"published resolved counts increase from rank {first['rank']} "
+                f"({first['resolved']}) to rank {second['rank']} ({second['resolved']}); "
+                "the board must be nonincreasing and order is validated, not repaired"
+            )
+        if pair["net_edge"] != gap:
             raise ReportFailure(
                 f"pair {index} net edge {pair['net_edge']} disagrees with the adjacent "
                 f"published resolved counts ({first['resolved']} to {second['resolved']}); "
                 "the gap column may not render as aggregate-derived"
+            )
+        # The discordance identities tie the summary fields to the counts they
+        # summarize, at the same boundary the cross-file checks run.
+        if pair["net_edge"] != pair["n10"] - pair["n01"]:
+            raise ReportFailure(
+                f"pair {index} net edge {pair['net_edge']} does not equal n10 - n01 "
+                f"({pair['n10']} - {pair['n01']})"
+            )
+        if pair["n_discordant"] != pair["n01"] + pair["n10"]:
+            raise ReportFailure(
+                f"pair {index} n_discordant {pair['n_discordant']} does not equal "
+                f"n01 + n10 ({pair['n01']} + {pair['n10']})"
+            )
+        if pair["n_discordant"] > aggregates["n_items"]:
+            raise ReportFailure(
+                f"pair {index} n_discordant {pair['n_discordant']} exceeds n_items "
+                f"{aggregates['n_items']}"
             )
 
 

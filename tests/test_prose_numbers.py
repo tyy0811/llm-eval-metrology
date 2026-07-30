@@ -153,3 +153,52 @@ class TestDocumentSweep:
         bad = tmp_path / "README.md"
         bad.write_text(readme + "\nThe score improved by 12.34 points.\n", encoding="utf-8")
         assert checker.main([str(bad)]) != 0
+
+
+class TestSignedTokens:
+    """Jane's T3.3 review, finding 4: the checker compared unsigned tokens, so the
+    genuine corpus rendering -0.022 was rejected while a fabricated -7 passed with
+    its sign stripped, and the exponent pattern accepted only a negative sign.
+    """
+
+    def violations(self, text: str) -> list[str]:
+        return checker.check_text(text, checker.build_context(REPO_ROOT))
+
+    def test_a_genuine_negative_rendering_passes(self) -> None:
+        assert self.violations("the lower bound reaches -0.022 for one pair") == []
+
+    def test_a_fabricated_negative_integer_fails(self) -> None:
+        """-7 stripped to 7 matched the largest observed gap; the sign is part of
+        the rendering, and no corpus value renders to -7."""
+        assert self.violations("the effect was -7 instances") != []
+
+    def test_an_unsupported_plus_sign_fails(self) -> None:
+        """No registry format ever emits a leading plus, so +7 is not the exact
+        rendering of anything."""
+        assert self.violations("the gap is +7 instances") != []
+
+    def test_positive_exponents_are_caught(self) -> None:
+        assert self.violations("a threshold of 0.05e+3 was applied") != []
+        assert self.violations("a threshold of 0.05E+3 was applied") != []
+
+    def test_hyphen_ranges_still_fail_and_signed_values_are_not_double_counted(self) -> None:
+        """The glued-hyphen pass needs a word character before the hyphen, or the
+        unary minus of -0.022 would be re-scanned as a glued numeral and rejected."""
+        assert self.violations("gaps ranged 0-42 instances") != []
+        assert self.violations("bounds of -0.022 and 0.024 were observed") == []
+
+
+class TestSystemNameMembership:
+    """Finding 4, last part: a date-prefixed system-shaped token in running prose
+    was stripped without checking it names a real board entry, so a fabricated
+    system carrying fabricated digits was invisible.
+    """
+
+    def violations(self, text: str) -> list[str]:
+        return checker.check_text(text, checker.build_context(REPO_ROOT))
+
+    def test_a_real_system_name_in_prose_passes(self) -> None:
+        assert self.violations("the run by 20251215_livesweagent_claude-opus-4-5 leads") == []
+
+    def test_a_fabricated_system_name_in_prose_fails(self) -> None:
+        assert self.violations("the run by 20991231_fake_agent-9000 leads") != []

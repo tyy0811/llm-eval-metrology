@@ -128,3 +128,49 @@ class TestSentinelFlow:
         out = run_notebook(capsys, tmp_path / "results.json", tmp_path / "aggregates.json")
         for source, path, _, rendered in SENTINELS:
             assert rendered in out, f"sentinel for {source}:{path} did not flow to output"
+
+
+class TestAlternativeResults:
+    """Jane's T3.3 review, finding 3: the notebook crashed on an unattainable MDE
+    (instances is None, a state the engine explicitly validates) and hardcoded the
+    no_logs conclusion as "unchanged" whatever the stored family result said.
+    """
+
+    def sandbox(self, tmp_path):
+        results = json.loads(RESULTS_PATH.read_text(encoding="utf-8"))
+        aggregates = json.loads(AGGREGATES_PATH.read_text(encoding="utf-8"))
+        results["pairs"][0]["mde"] = {
+            "status": "unattainable",
+            "instances": None,
+            "rate_difference": None,
+            "max_attainable_power": 0.04,
+        }
+        results["mde_grid"]["points"][0]["instances"] = None
+        results["mde_grid"]["points"][0]["status"] = "unattainable"
+        results["secondary"]["no_logs_sensitivity"]["family"]["resolved_count"] = 1
+        results["secondary"]["no_logs_sensitivity"]["family"]["separable_count"] = 2
+        (tmp_path / "results.json").write_text(
+            json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        (tmp_path / "aggregates.json").write_text(
+            json.dumps(aggregates, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return tmp_path / "results.json", tmp_path / "aggregates.json"
+
+    def test_unattainable_mde_renders_na_not_a_crash(self, tmp_path, capsys) -> None:
+        out = run_notebook(capsys, *self.sandbox(tmp_path))
+        pair_line = next(line for line in out.splitlines() if line.startswith("pair "))
+        assert "mde n/a" in pair_line
+        assert "(unattainable)" in pair_line
+        grid_line = next(line for line in out.splitlines() if line.startswith("grid "))
+        assert "mde n/a" in grid_line
+
+    def test_the_sensitivity_conclusion_is_read_not_asserted(self, tmp_path, capsys) -> None:
+        out = run_notebook(capsys, *self.sandbox(tmp_path))
+        assert "conclusion unchanged" not in out
+        assert "separable 2, resolved 1" in out
+
+    def test_the_committed_conclusion_is_also_read(self, capsys) -> None:
+        out = run_notebook(capsys)
+        assert "conclusion unchanged" not in out
+        assert "separable 0, resolved 0" in out
