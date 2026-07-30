@@ -92,6 +92,38 @@ class TestTokenizer:
         fabricated figure hide behind a glued modifier; it must still be caught."""
         assert self.violations("a 42.7-point swing") != []
 
+    def test_a_fabricated_ordinal_fails(self) -> None:
+        """An ordinal suffix (st/nd/rd/th) is a word character to NUMERAL's tail
+        guard (?!\\w), so "42nd" never matched NUMERAL at all and was invisible
+        to the checker regardless of whether 42 is a corpus member."""
+        assert self.violations("The 42nd adjacent pair was the only one to reject.") != []
+
+    def test_hyphen_glued_numerals_check_membership_both_ways(self) -> None:
+        """A hyphen immediately before a numeral is an identifier boundary to
+        NUMERAL's head guard (?<![\\w.-]), so neither "rank-999" nor "top-20"
+        was ever scanned. "top-20" must still pass, because 20 is a genuine
+        corpus member (the board size); "rank-999" must fail, because 999 is
+        not a member anywhere in the corpus."""
+        assert self.violations("rank-999 sits below the cut") != []
+        assert self.violations("the top-20 entries") == []
+
+    def test_a_hyphen_glued_range_fails(self) -> None:
+        """ "0-42" is a range, not a single glued modifier: the second number is
+        hidden from NUMERAL by the same head-guard gap as "rank-999", and 42 is
+        not a corpus member."""
+        assert self.violations("gaps ranged 0-42 instances") != []
+
+    def test_a_leading_dot_decimal_always_fails(self) -> None:
+        """No corpus rendering begins with a bare dot (every float renderer
+        writes a leading zero), so a leading-dot decimal is always a violation,
+        independent of membership."""
+        assert self.violations("a rate of .421 was observed") != []
+
+    def test_scientific_notation_always_fails(self) -> None:
+        """No corpus rendering contains an exponent, so scientific notation is
+        always a violation, independent of membership."""
+        assert self.violations("a threshold of 4.2e-3 was used") != []
+
     def test_corpus_values_at_sentence_end_still_pass(self) -> None:
         """The looser tail must not turn genuine corpus figures into false
         positives merely because a sentence happens to end right after them."""
@@ -104,6 +136,16 @@ class TestDocumentSweep:
         assert checker.main(["README.md"]) == 0
 
     def test_the_notebook_markdown_cells_pass(self) -> None:
+        assert checker.main(["experiments/swebench/notebook.py"]) == 0
+
+    def test_the_new_passes_do_not_flag_real_prose(self) -> None:
+        """The ordinal, hyphen-glued, leading-dot, and scientific-notation passes
+        are additive: they must not surface a violation anywhere in the
+        committed README or notebook prose. Restates test_the_readme_passes and
+        test_the_notebook_markdown_cells_pass explicitly for the new shapes,
+        since those two tests would otherwise be the only signal that the new
+        passes are clean against real prose."""
+        assert checker.main(["README.md"]) == 0
         assert checker.main(["experiments/swebench/notebook.py"]) == 0
 
     def test_an_injected_figure_is_caught(self, tmp_path) -> None:

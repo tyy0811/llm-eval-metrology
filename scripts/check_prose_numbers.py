@@ -6,6 +6,14 @@ directly; .py files are treated as percent-format notebooks and only their
 markdown cells are scanned. Exemptions are structural and verified against the
 repository, never shape-only: a path must be git-tracked, a make target declared,
 a system name present in the aggregates.
+
+Disclosed weaknesses: a numeral glued to a trailing unit letter (`42x`, `42k`,
+`42pp`) is invisible, because the trailing `\\w` guard that protects identifiers
+cannot distinguish a unit suffix from an identifier suffix; and a digit run
+embedded inside a prose identifier is invisible by the same guard on the
+leading side. Both are accepted, documented limits rather than closed gaps:
+closing either would require distinguishing "the identifier `run42`" from "the
+figure 42x" by more than lookaround, which this checker does not attempt.
 """
 
 from __future__ import annotations
@@ -37,14 +45,32 @@ HEADING = re.compile(r"^#+\s", re.MULTILINE)
 TABLE_DIVIDER = re.compile(r"^\|[\s:|-]+\|$", re.MULTILINE)
 ORDERED_MARKER = re.compile(r"^(\s*)\d+\.\s", re.MULTILINE)
 LABEL = re.compile(r"\b(?:Phase|Experiment|Layer|section|item)\s+\d+(?!\.\d)\b")
-# The head and tail lookarounds are deliberately asymmetric. The head stays
-# (?<![\w.-]) as identifier protection, disclosed above: a leading word character
-# marks digits that belong to an identifier, not a figure. The tail is only
-# (?!\w): three-component versions, dates, and hashes are already stripped before
-# NUMERAL ever runs, so a looser tail cannot re-expose them, and a looser tail is
-# required, because a sentence-final period ("12.34.") or a glued hyphen ("42.7-point")
-# must not hide a fabricated figure just because nothing word-like follows it.
+# The head and tail lookarounds are deliberately asymmetric, and the asymmetry has
+# a real cost: it is what makes a unit-suffixed numeral (42x) or a digit run inside
+# a bare identifier invisible, recorded in the module docstring's Disclosed
+# weaknesses paragraph rather than claimed away here. The head stays (?<![\w.-]) as
+# identifier protection: a leading word character marks digits that belong to an
+# identifier, not a figure. The tail is only (?!\w): three-component versions,
+# dates, and hashes are already stripped before NUMERAL ever runs, so a looser tail
+# cannot re-expose them, and a looser tail is required, because a sentence-final
+# period ("12.34.") or a glued hyphen ("42.7-point") must not hide a fabricated
+# figure just because nothing word-like follows it.
 NUMERAL = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?(?!\w)")
+# Four narrower shapes NUMERAL's guards cannot see, each closing one evasion:
+# - ORDINAL: the suffix letter (st/nd/rd/th) is a word character, so NUMERAL's
+#   tail guard refuses "42nd" outright. The digit group must still be a member.
+# - HYPHEN_GLUED: a hyphen immediately before a numeral is an identifier boundary
+#   to NUMERAL's head guard, so "rank-999" and "0-42" were never scanned. The
+#   digit group must still be a member, so "top-20" passes (20 is the board size)
+#   while "rank-999" fails.
+# - LEADING_DOT: no corpus rendering begins with a bare dot (every float renderer
+#   writes a leading zero), so this is always a violation, membership aside.
+# - SCI_NOTATION: no corpus rendering contains an exponent, so this is always a
+#   violation, membership aside.
+ORDINAL = re.compile(r"(?<![\w.-])(\d+)(?:st|nd|rd|th)\b")
+HYPHEN_GLUED = re.compile(r"(?<=-)(\d+(?:\.\d+)?)(?!\w)")
+LEADING_DOT = re.compile(r"(?<![\w.\d])\.\d+")
+SCI_NOTATION = re.compile(r"\b\d+(?:\.\d+)?[eE]-?\d+\b")
 # Inside a scanned span the word-boundary protection is deliberately dropped: the
 # span already failed whole-token verification, so digits buried in identifiers
 # (`fake999`, `solve-everything-42`) are exactly what must surface. In running
@@ -140,6 +166,31 @@ def check_text(text: str, context: dict) -> list[str]:
         token = match.group(0).lstrip("-")
         if token not in context["corpus"]:
             violations.append(f"numeral {match.group(0)!r} is not a committed corpus rendering")
+
+    # Second pass, same stripped text: the four closed-evasion shapes NUMERAL's
+    # guards cannot see (module docstring and the block above NUMERAL explain why).
+    for match in ORDINAL.finditer(text):
+        digits = match.group(1)
+        if digits not in context["corpus"]:
+            violations.append(f"ordinal {match.group(0)!r} is not a committed corpus rendering")
+
+    for match in HYPHEN_GLUED.finditer(text):
+        digits = match.group(1)
+        if digits not in context["corpus"]:
+            violations.append(
+                f"hyphen-glued numeral {match.group(0)!r} is not a committed corpus rendering"
+            )
+
+    for match in LEADING_DOT.finditer(text):
+        violations.append(
+            f"leading-dot numeral {match.group(0)!r} is never a valid corpus rendering"
+        )
+
+    for match in SCI_NOTATION.finditer(text):
+        violations.append(
+            f"scientific notation {match.group(0)!r} is never a valid corpus rendering"
+        )
+
     return violations
 
 
