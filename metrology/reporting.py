@@ -577,6 +577,123 @@ _LEVEL = "level"
 _TEXT = "text"
 _LIST = "list"
 
+# --- The format registry (T3.3 spec section 3) -------------------------------------
+#
+# Every numeric path in the two-file corpus (D3.2) has exactly one declared rendering.
+# The generator and the prose checker both call render_number, so the set of strings
+# the checker accepts equals the set the generator can emit. There is no tolerance
+# parameter anywhere: generic rounding made 0.024 and 0.95 collide with the bare
+# integers 0 and 1, which appear throughout authored prose.
+#
+# Format keys: "int" exact integer; "pct1"/"inst1" one fixed decimal; "rate3"/"p3"/
+# "pow3" three fixed decimals; "sig6" six significant digits with trailing zeros
+# trimmed (safe only because no committed threshold is 0 or 1; a test bounds this).
+
+_FORMATTERS = {
+    "int": lambda value: str(int(value)),
+    "pct1": lambda value: f"{value:.1f}",
+    "inst1": lambda value: f"{value:.1f}",
+    "rate3": lambda value: f"{value:.3f}",
+    "p3": lambda value: f"{value:.3f}",
+    "pow3": lambda value: f"{value:.3f}",
+    "sig6": lambda value: f"{value:.6g}",
+}
+
+NUMBER_FORMATS: dict[str, str] = {
+    "aggregates:entries[].no_generation": "int",
+    "aggregates:entries[].no_logs": "int",
+    "aggregates:entries[].published_rate": "pct1",
+    "aggregates:entries[].rank": "int",
+    "aggregates:entries[].resolved": "int",
+    "aggregates:family_size": "int",
+    "aggregates:n_items": "int",
+    "results:configuration.alpha": "sig6",
+    "results:configuration.bootstrap_level": "sig6",
+    "results:configuration.bootstrap_resamples": "int",
+    "results:configuration.master_seed": "int",
+    "results:mde_grid.alpha": "sig6",
+    "results:mde_grid.n_items": "int",
+    "results:mde_grid.points[].discordance_rate": "rate3",
+    "results:mde_grid.points[].instances": "inst1",
+    "results:mde_grid.points[].max_attainable_power": "pow3",
+    "results:mde_grid.target_power": "sig6",
+    "results:pairs[].adjusted_p_value": "p3",
+    "results:pairs[].bootstrap.estimate": "rate3",
+    "results:pairs[].bootstrap.high": "rate3",
+    "results:pairs[].bootstrap.level": "sig6",
+    "results:pairs[].bootstrap.low": "rate3",
+    "results:pairs[].bootstrap.n_resamples": "int",
+    "results:pairs[].bootstrap.seed": "int",
+    "results:pairs[].discordance_rate": "rate3",
+    "results:pairs[].mde.instances": "inst1",
+    "results:pairs[].mde.max_attainable_power": "pow3",
+    "results:pairs[].mde.rate_difference": "rate3",
+    "results:pairs[].n01": "int",
+    "results:pairs[].n10": "int",
+    "results:pairs[].n_discordant": "int",
+    "results:pairs[].net_edge": "int",
+    "results:pairs[].p_value": "p3",
+    "results:pairs[].required_net_edge_at_observed": "int",
+    "results:primary.family_size": "int",
+    "results:primary.first_critical": "sig6",
+    "results:primary.first_rejection_gap_floor": "int",
+    "results:primary.headline.distinguishable_count": "int",
+    "results:primary.headline.real_test_not_distinguishable_count": "int",
+    "results:primary.headline.tie_forced_not_distinguishable_count": "int",
+    "results:primary.largest_observed_gap": "int",
+    "results:primary.resolved_count": "int",
+    "results:primary.separable_count": "int",
+    "results:secondary.harness_straddle.entries_predating_the_fix": "int",
+    "results:secondary.no_logs_sensitivity.family.alpha": "sig6",
+    "results:secondary.no_logs_sensitivity.family.first_critical": "sig6",
+    "results:secondary.no_logs_sensitivity.family.resolved_count": "int",
+    "results:secondary.no_logs_sensitivity.family.separable_count": "int",
+    "results:secondary.no_logs_sensitivity.family.size": "int",
+    "results:secondary.no_logs_sensitivity.pairs[].adjusted_p_value": "p3",
+    "results:secondary.no_logs_sensitivity.pairs[].dropped_instances": "int",
+    "results:secondary.no_logs_sensitivity.pairs[].n01": "int",
+    "results:secondary.no_logs_sensitivity.pairs[].n10": "int",
+    "results:secondary.no_logs_sensitivity.pairs[].n_items": "int",
+    "results:secondary.no_logs_sensitivity.pairs[].p_value": "p3",
+    "results:secondary.no_logs_sensitivity.pairs[].rank_a": "int",
+    "results:secondary.no_logs_sensitivity.pairs[].rank_b": "int",
+    "results:secondary.no_logs_sensitivity.total_pairs_affected": "int",
+    "results:secondary.non_tied_family.first_critical": "sig6",
+    "results:secondary.non_tied_family.gap_floor": "int",
+    "results:secondary.non_tied_family.rejected": "int",
+    "results:secondary.non_tied_family.size": "int",
+}
+
+
+def iter_numeric_leaves(source, document, prefix=""):
+    """Yield (qualified_path, value) for every numeric leaf. Booleans and None are
+    not numbers; list indices collapse to []. Pure, so it lives here and the prose
+    checker and the tests share one walker instead of drifting copies."""
+    if isinstance(document, dict):
+        for key, value in document.items():
+            inner = f"{prefix}.{key}" if prefix else key
+            yield from iter_numeric_leaves(source, value, inner)
+    elif isinstance(document, list):
+        for value in document:
+            yield from iter_numeric_leaves(source, value, prefix + "[]")
+    elif isinstance(document, bool) or document is None:
+        return
+    elif isinstance(document, (int, float)):
+        yield f"{source}:{prefix}", document
+
+
+def render_number(qualified_path: str, value) -> str:
+    """The one approved string for a corpus figure at a source-qualified path."""
+    try:
+        format_key = NUMBER_FORMATS[qualified_path]
+    except KeyError:
+        raise ValueError(
+            f"no registered renderer for {qualified_path!r}; extend NUMBER_FORMATS "
+            "deliberately rather than defaulting (T3.3 spec section 3)"
+        ) from None
+    return _FORMATTERS[format_key](value)
+
+
 _PAIR_SHAPE: dict[str, tuple[tuple[str, str], ...]] = {
     "comparison": (
         ("name", _TEXT),

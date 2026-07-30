@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import inspect
 import json
+from pathlib import Path
 
 import pytest
 
 from metrology.paired import minimum_gap_for_threshold
 from metrology.reporting import (
+    NUMBER_FORMATS,
     VERDICT_NOT_RESOLVED,
     VERDICT_RESOLVED,
     PairCounts,
@@ -25,7 +27,9 @@ from metrology.reporting import (
     build_family_report,
     build_pair_report,
     family_card_json,
+    iter_numeric_leaves,
     pair_card_json,
+    render_number,
 )
 
 PROVENANCE = Provenance(
@@ -717,3 +721,81 @@ class TestSeparabilityLabelling:
         assert limit["first_rejection_gap_floor"] == 10
         assert limit["floor_label"] == "family gateway floor, cleared by the first rejection"
         assert "best_case_family_floor" not in limit
+
+
+_REPO = Path(__file__).resolve().parent.parent
+_RESULTS = _REPO / "experiments/swebench/results/results.json"
+_AGGREGATES = _REPO / "experiments/swebench/derived/aggregates.json"
+
+# Hand-written from the spec section 3 table. Constants no code produced: if
+# render_number and the checker share a defect, these still catch it.
+GOLDEN_CASES = (
+    ("aggregates:n_items", 500, "500"),
+    ("aggregates:entries[].published_rate", 74.4, "74.4"),
+    ("results:pairs[].discordance_rate", 0.072, "0.072"),
+    ("results:pairs[].discordance_rate", 0.1, "0.100"),
+    ("results:pairs[].bootstrap.low", -0.022, "-0.022"),
+    ("results:pairs[].p_value", 0.4570207854105899, "0.457"),
+    ("results:pairs[].adjusted_p_value", 1.0, "1.000"),
+    ("results:pairs[].mde.max_attainable_power", 0.9999999999511919, "1.000"),
+    ("results:primary.first_critical", 0.002631578947368421, "0.00263158"),
+    ("results:configuration.alpha", 0.05, "0.05"),
+    ("results:configuration.bootstrap_level", 0.95, "0.95"),
+    ("results:mde_grid.target_power", 0.8, "0.8"),
+    ("results:pairs[].mde.instances", 17.384765625, "17.4"),
+    ("results:configuration.master_seed", 20260727, "20260727"),
+    ("results:primary.headline.tie_forced_not_distinguishable_count", 9, "9"),
+)
+
+_FLOAT_FORMATS = {"rate3", "p3", "pow3", "sig6", "inst1", "pct1"}
+
+
+def corpus_documents() -> dict[str, dict]:
+    return {
+        "results": json.loads(_RESULTS.read_text(encoding="utf-8")),
+        "aggregates": json.loads(_AGGREGATES.read_text(encoding="utf-8")),
+    }
+
+
+class TestRenderNumber:
+    def test_golden_cases(self) -> None:
+        for qualified_path, value, expected in GOLDEN_CASES:
+            assert render_number(qualified_path, value) == expected, qualified_path
+
+    def test_an_unregistered_path_raises(self) -> None:
+        with pytest.raises(ValueError, match="no registered renderer"):
+            render_number("results:primary.invented_field", 1)
+
+    def test_registry_covers_the_two_file_inventory_exactly(self) -> None:
+        """Both directions: no corpus path without a rule, no rule without a path.
+        The inventory is derived at test time, never pinned to a count (spec sec. 3)."""
+        observed = set()
+        for source, document in corpus_documents().items():
+            for qualified_path, _ in iter_numeric_leaves(source, document):
+                observed.add(qualified_path)
+        assert observed == set(NUMBER_FORMATS)
+
+    def test_no_float_class_renders_a_committed_value_to_bare_zero_or_one(self) -> None:
+        """Bounds the sig6 trimming exception. Integer classes are exempt by design:
+        a separable count of 0 is the actual result and must be citable."""
+        for source, document in corpus_documents().items():
+            for qualified_path, value in iter_numeric_leaves(source, document):
+                if NUMBER_FORMATS[qualified_path] in _FLOAT_FORMATS:
+                    assert render_number(qualified_path, value) not in ("0", "1", "-0"), (
+                        qualified_path,
+                        value,
+                    )
+
+    def test_no_path_accepts_both_raw_and_scaled(self) -> None:
+        """A percentage is a scaling, not a formatting: 0.072 and 7.2 must never
+        both be accepted renderings at one path."""
+        for source, document in corpus_documents().items():
+            for qualified_path, value in iter_numeric_leaves(source, document):
+                if NUMBER_FORMATS[qualified_path] in _FLOAT_FORMATS and value != 0:
+                    raw = render_number(qualified_path, value)
+                    scaled = render_number(qualified_path, value * 100)
+                    assert raw != scaled, qualified_path
+
+    def test_iter_numeric_leaves_skips_booleans_and_strings(self) -> None:
+        leaves = dict(iter_numeric_leaves("x", {"a": True, "b": "s", "c": 3, "d": None}))
+        assert leaves == {"x:c": 3}

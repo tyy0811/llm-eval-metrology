@@ -1165,3 +1165,21 @@ The near-miss worth recording: the first draft of the schema equated distinguish
 `separable_count`. Both are zero on this data, so every test would have passed while encoding
 the claim D2.7 exists to keep separate. The review caught it; the synthetic negative control
 (gaps 40 and 6, one observed rejection) now tells the two apart permanently.
+
+---
+
+## D3.5 Prose figures render through a total per-path format registry, never generic rounding
+
+**Date:** 2026-07-30
+**Status:** settled by Jane (T3.3 spec section 3)
+
+Every numeric path in the D3.2 corpus has one declared renderer in
+`metrology.reporting.NUMBER_FORMATS`, keyed by source-qualified path. The generator and the
+D1.8 checker share `render_number`, so accepted strings equal emittable strings, with
+hand-written golden cases guarding the shared implementation. Generic rounding was rejected on
+measurement: at zero decimals 0.024 and 0.072 render as 0 and 0.95 renders as 1, making the
+two commonest prose integers members by accident. Float classes render fixed-width; the sig6
+threshold class is the single trimming exception, bounded by a test that no float class
+renders a committed value to bare 0 or 1. A percentage is a scaling declared at a path, never
+an implicit multiplication. Coverage is asserted in both directions against the inventory
+derived from the committed files at test time. Experiments 2 and 3 inherit this contract.
