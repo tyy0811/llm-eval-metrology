@@ -19,6 +19,8 @@ import pytest
 
 from metrology.paired import minimum_gap_for_threshold
 from metrology.reporting import (
+    CSV_COLUMNS,
+    FINDINGS_COLUMNS,
     NUMBER_FORMATS,
     VERDICT_NOT_RESOLVED,
     VERDICT_RESOLVED,
@@ -26,7 +28,9 @@ from metrology.reporting import (
     Provenance,
     build_family_report,
     build_pair_report,
+    csv_pair_rows,
     family_card_json,
+    findings_pair_rows,
     iter_numeric_leaves,
     pair_card_json,
     render_number,
@@ -799,3 +803,54 @@ class TestRenderNumber:
     def test_iter_numeric_leaves_skips_booleans_and_strings(self) -> None:
         leaves = dict(iter_numeric_leaves("x", {"a": True, "b": "s", "c": 3, "d": None}))
         assert leaves == {"x:c": 3}
+
+
+def _flatten_keys(record: dict, prefix: str = "") -> set[str]:
+    keys: set[str] = set()
+    for key, value in record.items():
+        name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            keys |= _flatten_keys(value, f"{name}_")
+        else:
+            keys.add(name)
+    return keys
+
+
+class TestPairProjections:
+    def test_findings_rows_shape(self) -> None:
+        rows = findings_pair_rows(corpus_documents()["results"])
+        assert len(rows) == 19
+        assert all(len(row) == len(FINDINGS_COLUMNS) == 5 for row in rows)
+        assert all(isinstance(cell, str) for row in rows for cell in row)
+
+    def test_findings_first_row_renders_the_committed_pair(self) -> None:
+        row = findings_pair_rows(corpus_documents()["results"])[0]
+        assert row == ("rank_1_vs_2", "0", "36", "1.000", "1.000")
+
+    def test_csv_rows_shape(self) -> None:
+        rows = csv_pair_rows(corpus_documents()["results"])
+        assert len(rows) == 19
+        assert all(len(row) == len(CSV_COLUMNS) == 24 for row in rows)
+
+    def test_csv_columns_cover_the_record_key_set_both_directions(self) -> None:
+        """A field added to the pair record later must fail here, not silently drop."""
+        record = corpus_documents()["results"]["pairs"][0]
+        assert set(CSV_COLUMNS) == _flatten_keys(record)
+
+    def test_csv_row_values_are_the_registry_renderings(self) -> None:
+        results = corpus_documents()["results"]
+        row = dict(zip(CSV_COLUMNS, csv_pair_rows(results)[2], strict=True))
+        pair = results["pairs"][2]
+        assert row["p_value"] == render_number("results:pairs[].p_value", pair["p_value"])
+        assert row["separable"] == "false"
+        assert row["verdict"] == pair["verdict"]
+        assert row["bootstrap_seed"] == str(pair["bootstrap"]["seed"])
+
+    def test_no_findings_column_is_entirely_the_gateway_floor(self) -> None:
+        """D2.7 guard: a column of nineteen 10s would re-assert the option-1
+        separability definition in a presentation slot no other test watches."""
+        results = corpus_documents()["results"]
+        floor = str(results["primary"]["first_rejection_gap_floor"])
+        for index in range(len(FINDINGS_COLUMNS)):
+            column = [row[index] for row in findings_pair_rows(results)]
+            assert set(column) != {floor}

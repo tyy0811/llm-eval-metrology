@@ -694,6 +694,82 @@ def render_number(qualified_path: str, value) -> str:
     return _FORMATTERS[format_key](value)
 
 
+FINDINGS_COLUMNS = (
+    "pair",
+    "resolved-count gap",
+    "observed discordance",
+    "observed p-value",
+    "Holm-adjusted p-value",
+)
+
+CSV_COLUMNS = (
+    "name",
+    "system_a",
+    "system_b",
+    "n01",
+    "n10",
+    "n_discordant",
+    "net_edge",
+    "discordance_rate",
+    "p_value",
+    "adjusted_p_value",
+    "verdict",
+    "separable",
+    "bootstrap_low",
+    "bootstrap_high",
+    "bootstrap_estimate",
+    "bootstrap_level",
+    "bootstrap_n_resamples",
+    "bootstrap_seed",
+    "bootstrap_unit",
+    "mde_status",
+    "mde_rate_difference",
+    "mde_instances",
+    "mde_max_attainable_power",
+    "required_net_edge_at_observed",
+)
+
+
+def findings_pair_rows(results: dict) -> list[tuple[str, str, str, str, str]]:
+    """The compact table for the README findings block. Five columns only; the full
+    detail lives in the notebook and the CSV (spec section 6). Already-rendered
+    strings, so no figure leaves this module unrendered."""
+    rows = []
+    for pair in results["pairs"]:
+        rows.append(
+            (
+                pair["name"],
+                render_number("results:pairs[].net_edge", pair["net_edge"]),
+                render_number("results:pairs[].n_discordant", pair["n_discordant"]),
+                render_number("results:pairs[].p_value", pair["p_value"]),
+                render_number("results:pairs[].adjusted_p_value", pair["adjusted_p_value"]),
+            )
+        )
+    return rows
+
+
+def _csv_cell(column: str, pair: dict) -> str:
+    if column.startswith("bootstrap_"):
+        value = pair["bootstrap"][column.removeprefix("bootstrap_")]
+        qualified = f"results:pairs[].bootstrap.{column.removeprefix('bootstrap_')}"
+    elif column.startswith("mde_"):
+        value = pair["mde"][column.removeprefix("mde_")]
+        qualified = f"results:pairs[].mde.{column.removeprefix('mde_')}"
+    else:
+        value = pair[column]
+        qualified = f"results:pairs[].{column}"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    return render_number(qualified, value)
+
+
+def csv_pair_rows(results: dict) -> list[tuple[str, ...]]:
+    """The full 24-column projection of each pair record (spec section 7)."""
+    return [tuple(_csv_cell(column, pair) for column in CSV_COLUMNS) for pair in results["pairs"]]
+
+
 _PAIR_SHAPE: dict[str, tuple[tuple[str, str], ...]] = {
     "comparison": (
         ("name", _TEXT),
