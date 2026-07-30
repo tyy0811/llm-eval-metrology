@@ -1040,3 +1040,106 @@ put the burden on remembering to update it whenever a new output appeared. The r
 deny-by-default with an explicit allowlist, so a new derived file is ignored unless someone
 deliberately permits it, and a test asserts that a hypothetical new derived file would be ignored.
 The de minimis aggregates remain the single allowed exception.
+
+---
+
+## D3.2 D1.8's membership corpus is two named files, not one
+
+**Date:** 2026-07-30
+**Status:** settled by Jane
+**Clarifies:** D1.8, which says "the committed aggregates file" in the singular
+
+D1.8 requires every number in prose to be a member of the committed aggregates, as set
+membership rather than provenance tracing. Building the checker exposed that no single committed
+file holds the numbers prose will cite.
+
+**Measured, not assumed.** `derived/aggregates.json` carries per-entry `resolved`,
+`published_rate`, `no_generation`, and `no_logs`, and carries **no** discordance figures: the
+strings `n01`, `n10`, and `discord` do not appear in it. The discordant counts, the paired
+bootstrap bounds, the MDE values, the gateway floor, and the separable and resolved counts exist
+only in `results/results.json`.
+
+This also corrects a reading of D1.4. That entry lists the committed de minimis aggregates as
+"per-entry resolve totals and discordance counts", which implies both live in the derived
+aggregates file. Only the first does. The discordance counts are committed, but as part of our
+own computed results, which D1.4 separately permits.
+
+**Decision.** The membership corpus is the **explicit union** of
+
+1. `experiments/swebench/derived/aggregates.json`, the de minimis source figures, and
+2. `experiments/swebench/results/results.json`, our computed results.
+
+**Commits us to.**
+
+- The corpus is a named list in the checker, never a glob or a directory walk. A glob would
+  silently widen the corpus whenever a file appeared, which turns set membership from a
+  constraint into a formality.
+- Adding a third file is a decision appended here, not an implementation detail.
+- The alternative of copying computed results back into `derived/aggregates.json` is rejected: it
+  would duplicate every figure across two files, and a checker that passes because a number was
+  duplicated into the file it checks against proves nothing about where the number came from.
+- D1.4's untracked-table boundary is untouched. Neither file in the corpus holds per-instance
+  data.
+
+**Why the singular wording mattered enough to record.** A checker built against D1.8 as literally
+written would have had exactly two options: reject every discordance figure the write-up needs, or
+quietly read a second file while the decision record still said one. The first breaks the
+write-up, and the second is the failure mode this repo exists to prevent, a check whose stated
+rule differs from the rule it applies.
+
+---
+
+## D3.3 Three false sentences shipped on correct code, and prose is now partly machine-checked
+
+**Date:** 2026-07-30
+**Status:** settled
+
+Verification at the start of T3.3 found three statements in committed files that were true when
+written and false at `6c431bf`. In every case the code was correct and the sentence attached to it
+was not, which is the failure mode D2.5 already recorded once and the harder one to catch, because
+no test fails when prose rots.
+
+**1. `make reproduce` explained itself with a claim that had expired.** The target printed "No
+experiment has produced results yet, so there is nothing to regenerate" while
+`experiments/swebench/results/` held committed results. The nonzero exit was still correct, since
+the target regenerates nothing until T3.5, so only the reason was wrong. Worse,
+`tests/test_tooling.py` asserted the substring `"nothing to reproduce"`, so the suite pinned the
+false claim and would have failed if anyone corrected it.
+
+Fixed by restating the reason as what is actually true, that the target is not wired up yet, and
+by replacing the assertion with three that reject the stale claims by name plus one that asserts
+the committed results which make them stale still exist. The same false sentence in
+`.github/workflows/ci.yml` is corrected too. `make reproduce` still exits nonzero, and CI still
+asserts that it does.
+
+**2. The recon note's tie table contradicted itself.** `docs/recon_swebench.md` listed the 74.4
+tie group as "3 (two inside the top 20)". Ranks 18, 19, and 20 all sit at 372 resolved, so all
+three are inside. Two independent cross-checks agree: the table's counts reach 20 only if all
+three are counted, and the gap vector's final two zeros require three tied entries at the tail.
+Corrected in place to "3 (all three inside the top 20)". Recon is a dated observation note rather
+than a frozen pre-registration, so it takes a direct correction and needs no deviation entry;
+this entry is the durable record of the change.
+
+**3. The README still described Phase 0.** It states that no results exist, that there is no
+engine code, and that no experiment has run, at a commit with engine v0.1, a completed Experiment
+1, and committed results. Left for T3.3, where the findings block is written and the status
+section is rewritten in the same pass rather than a findings block being added above a stale
+status.
+
+**The structural change, which is the part worth carrying forward.** `tests/test_recon_swebench.py`
+now checks the recon note's top-20 figures against `derived/aggregates.json`: every tie-group
+size, the number of tie groups, that tied plus untied entries account for all 20, that no
+parenthetical contradicts the integer in its own row, the quoted gap vector, the largest gap, and
+the tied and untied split. Verified by reverting the correction and confirming the parenthetical
+test fails, and by understating a row and confirming three tests fail.
+
+**What it does not cover, stated so the file is not mistaken for fully guarded.** Only facts
+derivable from the committed de minimis aggregates are checked, which means the analysed top 20
+and nothing else. The board-wide claims in the same note (180 entries, the 133 to 47 split across
+the two artifact directories, the top-30 tie counts, the eight entries that fail to reconcile at
+rank 63 and below) are unguarded, because re-deriving them needs a fetch.
+
+**The generalisation.** D1.8 makes generated prose checkable by set membership. That leaves
+authored prose, which is where all three of these defects lived. Numbers in authored documents
+that restate committed data should be checked against that data, and the cheap version of that is
+a test per document rather than a framework.

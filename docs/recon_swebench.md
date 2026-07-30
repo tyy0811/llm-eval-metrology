@@ -108,7 +108,7 @@ array order, which is reproducible from the pinned file.
 | 75.6 | 2 |
 | 74.8 | 2 |
 | 74.6 | 2 |
-| 74.4 | 3 (two inside the top 20) |
+| 74.4 | 3 (all three inside the top 20) |
 
 **Within-tie ordering follows no discernible rule.** Dates are not monotonic in either direction
 inside a tie group. The 76.8 group runs 2025-09-02, then 2025-08-04, then 2026-02-17. So the

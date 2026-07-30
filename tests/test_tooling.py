@@ -1,8 +1,9 @@
 """Phase 0 tooling guarantees: the declared make targets exist, dependencies are pinned
 exactly, and `make reproduce` fails loudly rather than passing as a no-op.
 
-A passing `make reproduce` must never be achievable while there is nothing to reproduce,
-because a green reproduce is meant to be evidence that committed results regenerate.
+A passing `make reproduce` must never be achievable while the target does not actually
+regenerate anything, because a green reproduce is meant to be evidence that committed
+results rebuild from committed inputs. It becomes real in PLAN.md T3.5.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = REPO_ROOT / "Makefile"
 REQUIREMENTS = REPO_ROOT / "requirements.txt"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+RESULTS_DIR = REPO_ROOT / "experiments" / "swebench" / "results"
 
 REQUIRED_TARGETS = ("test", "lint", "dash-check", "import-check", "reproduce")
 
@@ -85,7 +87,7 @@ def test_ci_pins_an_exact_python_patch_version() -> None:
 
 
 @pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
-def test_reproduce_fails_loudly_while_there_is_nothing_to_reproduce() -> None:
+def test_reproduce_fails_loudly_while_it_is_not_wired_up() -> None:
     result = subprocess.run(
         ["make", "reproduce"],
         cwd=REPO_ROOT,
@@ -94,7 +96,39 @@ def test_reproduce_fails_loudly_while_there_is_nothing_to_reproduce() -> None:
     )
 
     assert result.returncode != 0, "make reproduce must not pass as a silent no-op"
-    assert "nothing to reproduce" in result.stdout.lower()
+    assert "not wired up" in result.stdout.lower()
+    assert "t3.5" in result.stdout.lower(), "the message must name where the target becomes real"
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
+@pytest.mark.parametrize(
+    "stale_claim",
+    ("nothing to reproduce", "no experiment has produced results", "no results exist"),
+)
+def test_reproduce_does_not_claim_results_are_absent(stale_claim: str) -> None:
+    """The exit code was always right; the reason stopped being true at T3.2.
+
+    Experiment 1's results are committed, so a message explaining the failure as "no results
+    exist" is false, and the previous test pinned that false string. The target still fails
+    because it does not regenerate anything yet, which is a different claim and the true one.
+    """
+    result = subprocess.run(
+        ["make", "reproduce"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+    )
+
+    assert stale_claim not in result.stdout.lower(), (
+        f"make reproduce claims {stale_claim!r}, but "
+        f"{RESULTS_DIR.relative_to(REPO_ROOT)} holds committed results"
+    )
+
+
+def test_the_committed_results_that_make_the_stale_message_false_exist() -> None:
+    """Anchors the test above. If results ever stop being committed, this fails first."""
+    assert (RESULTS_DIR / "results.json").is_file()
+    assert (RESULTS_DIR / "cards.json").is_file()
 
 
 class TestPythonVersionGuard:

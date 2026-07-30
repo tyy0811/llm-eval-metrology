@@ -48,14 +48,21 @@ import-check: check-python
 
 check: test lint dash-check import-check
 
-# Loud-failing no-op until an experiment produces results (PLAN.md T0.2).
-# Phase 3 replaces this with the Experiment 1 regeneration, and Phase 8 chains all three.
+# Loud-failing no-op until this target actually regenerates something (PLAN.md T0.2).
+# T3.5 wires it to the Experiment 1 rebuild, and T8.4 chains all three experiments.
+#
+# The explanation below said "no experiment has produced results yet" until T3.2 committed
+# Experiment 1's results and made that false. The exit code was never the problem; the reason
+# was. A target that fails for a stated reason which is no longer true is the same defect as
+# one that passes for no reason.
 reproduce:
-	@echo "make reproduce: nothing to reproduce."
+	@echo "make reproduce: not wired up yet."
 	@echo ""
-	@echo "No experiment has produced results yet, so there is nothing to regenerate."
-	@echo "This target is a deliberate loud failure, not a passing no-op, so that a green"
-	@echo "reproduce can never be mistaken for evidence that results are reproducible."
+	@echo "Experiment 1 has committed results in experiments/swebench/results/, but this"
+	@echo "target does not regenerate them yet, so a green exit here would prove nothing."
+	@echo "It stays a deliberate loud failure rather than a passing no-op, because a green"
+	@echo "reproduce is meant to be evidence that committed results rebuild from committed"
+	@echo "inputs, and nothing rebuilds until the target does the fetch and the run."
 	@echo ""
 	@echo "It becomes real in PLAN.md T3.5 (Experiment 1) and T8.4 (all three experiments)."
 	@exit 1

@@ -52,12 +52,13 @@ jobs:
       - name: import-check
         run: make import-check
 
-      # PLAN.md T0.2 requires this target to fail while no experiment has produced results.
-      # CI asserts the loud failure so the guarantee cannot rot unnoticed.
+      # PLAN.md T0.2 requires this target to fail while it does not regenerate anything.
+      # CI asserts the loud failure so the guarantee cannot rot unnoticed. Becomes a real
+      # regeneration check at T3.5.
       - name: reproduce is a loud failure at this phase
         run: |
           if make reproduce; then
-            echo "make reproduce succeeded but no experiment has produced results yet"
+            echo "make reproduce succeeded but it does not regenerate anything yet"
             exit 1
           fi
           echo "make reproduce failed as required"
