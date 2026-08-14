@@ -1097,15 +1097,41 @@ class TestPageReference:
         all; the second survived only by the accident of naming two ranks. Spec 10.3 validates the
         list by exact length, order and value, and a limit is worth nothing if it can be dropped
         quietly, so this is exact rather than a membership check.
+
+        The second limit says "not neighbors" rather than "non-adjacent". Tier 1 names one concept
+        with one word: a general reader met "neighboring" four times and then "non-adjacent" once,
+        and had to infer that the two name the same thing, inside the layer whose purpose is to
+        remove inferences. The apparatus keeps "adjacent", which is the registered PREREG term and
+        right for its audience.
         """
         board = corpus_value("aggregates:family_size")
 
         assert non_claims_items(page_reference_text()) == [
             "This does not show the systems are equivalent. Not finding a difference is not the "
             "same as showing there is none, and this experiment registered no equivalence test.",
-            "This does not cover non-adjacent systems. Only neighboring pairs were compared, so "
-            f"it says nothing about how rank 1 compares with rank {board}.",
+            "This does not cover systems that are not neighbors. Only neighboring pairs were "
+            f"compared, so it says nothing about how rank 1 compares with rank {board}.",
         ]
+
+    def test_tier_1_names_one_concept_with_one_word(self) -> None:
+        """Two words for one concept in the first reading is an inference the layer must not ask
+        for. "adjacent" is the registered PREREG term and stays in the apparatus, where the
+        audience knows it; the finding layer says "neighbors" throughout.
+
+        The obvious way to satisfy the first half is a sweep, which would take the family card's
+        registered wording with it, so the second half is asserted too. It names the strings
+        rather than counting them, because a count would fail on any unrelated rewording in the
+        apparatus and so would fail for the wrong reason.
+        """
+        text = page_reference_text()
+        start, end = apparatus_span(text)
+        apparatus = text[start:end]
+
+        assert "adjacent" not in finding_region(text).lower()
+        assert "Adjacent pairs only. Non-adjacent comparisons are out of scope." in apparatus
+        assert "adjacent pairs separable" in apparatus
+        assert "Largest observed adjacent gap" in apparatus
+        assert "Every adjacent pair, as tested" in apparatus
 
     def test_every_finding_layer_figure_is_the_committed_corpus_value(self) -> None:
         """Spec 12.1's staleness guard, and it is total over the layer.
