@@ -144,8 +144,23 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
 
 /* The table scrolls inside its own container, so a narrow screen scrolls the table and never the
    page. The note below is deliberately outside this element: prose in a horizontal scroll
-   container slides out of view when the reader scrolls the table. */
+   container slides out of view when the reader scrolls the table.
+   The container carries no margin of its own, unlike the plan's sketch: the block's
+   1.1rem 1.25rem padding already sets the inset, and the plan's 0.75rem margin here would stand
+   the table 30.6px below the block's top edge against the 18.6px it leaves at the bottom
+   (measured both ways), so the fragment would stop sitting on the card's inset; at the bottom
+   that margin collapses over the note's own 0.55rem and sets that gap instead of the note. */
 .pair-table-scroll { overflow-x: auto; }
+
+/* The container is a tab stop so it can be scrolled from the keyboard. Chrome and Firefox make a
+   scrolling container focusable by themselves, Safari does not, so without tabindex a
+   keyboard-only Safari user cannot reach the columns that are off screen at all. The ring reuses
+   summary:focus-visible, the sheet's only other focus style. Chrome's own focusability is
+   conditional on the container actually overflowing: measured without this attribute, it was
+   focusable at 320px and 375px, where the table scrolls, and not at 768px, where it fits. An
+   explicit tabindex makes it a tab stop at every width, which is the price of doing this without
+   script. */
+.pair-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .pair-table {
   border-collapse: collapse;
@@ -156,7 +171,10 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
 /* The caption is this block's section label, so it takes the sheet's existing eyebrow language
    rather than introducing a second heading style. It is also kept short on purpose: a caption box
    is as wide as the table, so a long one is clipped by the scroll container on a narrow screen
-   instead of wrapping into view. */
+   instead of wrapping into view.
+   The 0.6rem below it is a hand-set optical value rather than the plan's 0.4rem, which was sized
+   for a bold sans caption sitting straight on the header row; an uppercase tracked label needs
+   more air above the 2px rule. */
 .pair-table caption {
   font-family: var(--mono);
   font-size: 0.68rem;
@@ -170,9 +188,15 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
 
 /* Headers are labels, so they take the sans face like every other label in the sheet, and they
    wrap: five nowrap headers overflow at the 46rem page width, which would put a scrollbar under
-   the table on a desktop screen that has room for it. Balanced wrapping keeps "observed p-value"
-   breaking after the word rather than after the hyphen. Cells never wrap, so no figure breaks
-   across lines. */
+   the table on a desktop screen that has room for it. Measured at that width, balanced wrapping
+   breaks "observed p-value" and "Holm-adjusted p-value" after the word, so neither of those two
+   terms splits at its own hyphen. It does not do that for every header, and it is not a rule:
+   "resolved-count gap" splits at its hyphen at every width measured, "resolved-" then
+   "count gap" at the page width and "resolved-" then "count " then "gap" once the columns are
+   squeezed to the table's 478px minimum, because the alternative leaves a three-character last
+   line. At that minimum "Holm-adjusted" splits at its hyphen too. The strings come from
+   FINDINGS_COLUMNS and are not ours to reword, so those breaks stay. Cells never wrap, so no
+   figure breaks across lines. */
 .pair-table thead th {
   text-align: left;
   font-weight: 600;
@@ -186,7 +210,7 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
 /* Values take the mono face, as every figure on a card does. */
 .pair-table tbody td {
   font-family: var(--mono);
-  padding: 0.32rem 0.6rem;
+  padding: 0.3rem 0.6rem;
   border-bottom: 1px solid var(--rule);
   white-space: nowrap;
 }
@@ -198,6 +222,8 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
 .pair-table th:first-child, .pair-table td:first-child { padding-left: 0; }
 .pair-table th:last-child, .pair-table td:last-child { padding-right: 0; }
 
+/* The 0.55rem top margin is hand-set too, and larger than the plan's 0.4rem because the last row
+   drops its hairline, so this gap is the only thing holding the note off the table's final row. */
 .pair-table-note {
   font-size: 0.75rem;
   color: var(--muted);

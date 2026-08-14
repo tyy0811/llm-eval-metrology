@@ -10,6 +10,7 @@ edge-safe marker at position zero, and the nonzero-gap ruler case.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -653,23 +654,98 @@ class TestTableReference:
     """
 
     def test_the_reference_exists_and_is_labelled_illustrative(self) -> None:
+        """The plan's `"illustrative" in text.lower()` could not fail. Delete the whole
+        stamp block and nine occurrences survive: the <title>, the class name inside the
+        inlined stylesheet, and the four illustrative_* pair names. One assertion stood
+        between this repo and an unlabelled fixture and it passed with every labelling
+        signal removed, so it asserts on the stamp block and its wording instead.
+        """
         path = FIXTURES / "table_reference.html"
         assert path.is_file()
         text = path.read_text(encoding="utf-8")
-        assert "illustrative" in text.lower()
+
+        opening = '<div class="stamp-illustrative">'
+        assert opening in text
+        stamp = text.split(opening, 1)[1].split("</div>", 1)[0]
+        assert "Illustrative fixture. Not a result." in stamp
+        assert "invented" in stamp
+        assert "No experiment produced them." in stamp
+        assert text.index(opening) < text.index("<table")
+
+    def test_the_illustrative_figures_cannot_be_read_as_measurements(self) -> None:
+        """The stamp asserts a property of the digits, so something has to hold the digits
+        to it. The first draft ran a gap column of 0, 2, 4, 6 and a discordance of 44 on
+        every row, both entirely plausible for this corpus, under a sentence claiming no
+        cell could be read as a measurement. A false sentence sitting on correct work is
+        the harder kind to spot, so the counts are repdigits now and this is the guard.
+        """
+        text = (FIXTURES / "table_reference.html").read_text(encoding="utf-8")
+        body = text.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+        rows = [re.findall(r"<td>(.*?)</td>", row) for row in body.split("<tr>")[1:]]
+        assert len(rows) == 4
+
+        for name, gap, discordance, observed, adjusted in rows:
+            assert name.startswith("illustrative_"), name
+            for count in (gap, discordance):
+                assert re.fullmatch(r"(\d)\1{3,}", count), f"count {count} could pass for real"
+            for p_value in (observed, adjusted):
+                assert re.fullmatch(r"1\.000|0\.(\d)\1\1", p_value), p_value
 
     def test_the_reference_shows_the_settled_columns(self) -> None:
-        """D3.6 governs over D1.10's column sentence: no per-pair floor column."""
+        """D3.6 governs over D1.10's column sentence: no per-pair floor column.
+
+        The plan searched the whole file, where four of the five strings also occur
+        outside the table: "pair" 26 times, "resolved-count gap" and "observed
+        discordance" in the D4 note, "observed p-value" inside a CSS comment. Only
+        "Holm-adjusted p-value" was unique to the header row, so corrupting any of the
+        other four left the suite green. This reads the header cells out of the table
+        region and compares the whole row, which also catches an added column.
+        """
         text = (FIXTURES / "table_reference.html").read_text(encoding="utf-8")
-        for column in (
+        table = text.split("<table", 1)[1].split("</table>", 1)[0]
+
+        assert re.findall(r"<th\b[^>]*>(.*?)</th>", table, flags=re.DOTALL) == [
             "pair",
             "resolved-count gap",
             "observed discordance",
             "observed p-value",
             "Holm-adjusted p-value",
-        ):
-            assert column in text
-        assert "floor" not in text.lower().split("<table")[1].split("</table>")[0]
+        ]
+        assert "floor" not in table.lower()
+
+    def test_the_scroll_container_is_reachable_from_the_keyboard(self) -> None:
+        """Chrome and Firefox focus a scrolling container by themselves, Safari does not,
+        so without these attributes a keyboard-only Safari reader cannot scroll the table
+        at all. Task 4's snapshot freezes whatever this reference establishes, so the
+        attributes are guarded here rather than left to the renderer to remember.
+        """
+        text = (FIXTURES / "table_reference.html").read_text(encoding="utf-8")
+        css = (Path(__file__).resolve().parent.parent / "metrology/cards/card.css").read_text(
+            encoding="utf-8"
+        )
+
+        opening = text.split("<table", 1)[0].rsplit('<div class="pair-table-scroll"', 1)
+        assert len(opening) == 2, "no .pair-table-scroll container before the table"
+        attributes = opening[1].split(">", 1)[0]
+        assert 'tabindex="0"' in attributes
+        assert 'role="region"' in attributes
+        assert "aria-label=" in attributes
+        assert ".pair-table-scroll:focus-visible" in css
+
+    def test_the_reference_inlines_the_current_stylesheet(self) -> None:
+        """D1.3 only works if the approved reference shows what card.css actually does.
+        The copy is inlined by hand so the file opens with no server, and nothing stopped
+        it drifting: verdict_reference.html inlines a copy taken before card.css gained
+        its .card-rail.is-resolved block and has been quietly stale ever since. That file
+        is left alone deliberately; this one is held to the current sheet.
+        """
+        text = (FIXTURES / "table_reference.html").read_text(encoding="utf-8")
+        css = (Path(__file__).resolve().parent.parent / "metrology/cards/card.css").read_text(
+            encoding="utf-8"
+        )
+
+        inlined = text.split("<style>\n", 1)[1].split("</style>", 1)[0]
+        assert inlined == css
 
     def test_the_stylesheet_has_a_table_language(self) -> None:
         """A smoke check only: the sheet had zero table rules, so the renderer in Task 4
