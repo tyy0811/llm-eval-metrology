@@ -643,3 +643,41 @@ class TestMultiSourceFamilyRendering:
 
     def test_multi_source_family_snapshot(self) -> None:
         assert_snapshot("snapshot_family_multisource.html", render_card(self.multi_source_family()))
+
+
+class TestTableReference:
+    """D1.3: the approved reference precedes the renderer. Committing it first means
+    Task 4's snapshots target an artifact a human approved, rather than recording
+    whatever the renderer happened to emit (D2.8 credits this ordering for catching a
+    heading regression no assertion covered).
+    """
+
+    def test_the_reference_exists_and_is_labelled_illustrative(self) -> None:
+        path = FIXTURES / "table_reference.html"
+        assert path.is_file()
+        text = path.read_text(encoding="utf-8")
+        assert "illustrative" in text.lower()
+
+    def test_the_reference_shows_the_settled_columns(self) -> None:
+        """D3.6 governs over D1.10's column sentence: no per-pair floor column."""
+        text = (FIXTURES / "table_reference.html").read_text(encoding="utf-8")
+        for column in (
+            "pair",
+            "resolved-count gap",
+            "observed discordance",
+            "observed p-value",
+            "Holm-adjusted p-value",
+        ):
+            assert column in text
+        assert "floor" not in text.lower().split("<table")[1].split("</table>")[0]
+
+    def test_the_stylesheet_has_a_table_language(self) -> None:
+        """A smoke check only: the sheet had zero table rules, so the renderer in Task 4
+        would have styled the table by accident. Substring matching cannot tell a table
+        language from the word table, so the real gate on this task is the visual review.
+        """
+        css = (Path(__file__).resolve().parent.parent / "metrology/cards/card.css").read_text(
+            encoding="utf-8"
+        )
+        for selector in ("table", "thead", "tbody", "caption"):
+            assert selector in css

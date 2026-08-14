@@ -1,3 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pair table reference (illustrative)</title>
+<style>
 :root {
   --ground: #f6f8fa;
   --panel: #ffffff;
@@ -212,3 +219,89 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
   font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--accent); margin-left: 0.6rem; opacity: 0.75;
 }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <div class="stamp-illustrative">
+    <strong>Illustrative fixture. Not a result.</strong>
+    <span>Every pair name and every figure in the table below is invented to exercise the layout,
+    and the digits are patterned so that no cell can be read as a measurement. No experiment
+    produced them. Fixtures are the one sanctioned home for illustrative numbers (PLAN.md section
+    2). This page is a review target rather than renderer output: no renderer for this table
+    exists yet, and none is written until this file is approved (D1.3).</span>
+  </div>
+
+  <div>
+    <h1>Pair table reference</h1>
+    <p class="note">The pair table. In the finished document it is a sibling of the cards, not
+    part of one, and it lands between the family card above and the pair cards below. It takes the
+    card's surface on purpose, so that it reads as a member of the set: left bare it would be the
+    only block on the page sitting directly on the page ground, which reads as a gap between two
+    card groups. On a narrow screen the table scrolls inside its own block, and the page never
+    scrolls sideways. Four invented rows stand in for the nineteen the document will carry. The
+    five column headers are
+    the strings in <code>metrology.reporting.FINDINGS_COLUMNS</code>, verbatim and in order,
+    because the renderer is handed that same tuple. There is deliberately no per-pair floor
+    column (D3.6): those values live in neither corpus file, and deriving them here would
+    recompute inside a layer that promises not to. The gateway floor is stated once in the
+    finished document, on the family card. Labels in teal name the structural element and are
+    annotations for review only; the renderer does not emit them, exactly as in
+    <code>verdict_reference.html</code>.</p>
+  </div>
+
+  <div class="pair-table-block">
+    <div class="pair-table-scroll">
+      <table class="pair-table">
+        <caption data-element="pair table">Every adjacent pair, as tested</caption>
+        <thead>
+          <tr>
+            <th scope="col">pair</th>
+            <th scope="col">resolved-count gap</th>
+            <th scope="col">observed discordance</th>
+            <th scope="col">observed p-value</th>
+            <th scope="col">Holm-adjusted p-value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>illustrative_a_vs_b</td>
+            <td>0</td>
+            <td>44</td>
+            <td>1.000</td>
+            <td>1.000</td>
+          </tr>
+          <tr>
+            <td>illustrative_b_vs_c</td>
+            <td>2</td>
+            <td>44</td>
+            <td>0.888</td>
+            <td>1.000</td>
+          </tr>
+          <tr>
+            <td>illustrative_c_vs_d</td>
+            <td>4</td>
+            <td>44</td>
+            <td>0.555</td>
+            <td>1.000</td>
+          </tr>
+          <tr>
+            <td>illustrative_d_vs_e</td>
+            <td>6</td>
+            <td>44</td>
+            <td>0.222</td>
+            <td>1.000</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="pair-table-note" data-element="D4 disclosure">The observed discordance and both
+    p-value columns read per-instance artifacts and carry the D4 harness comparability caveat:
+    submissions do not record their harness version. The pair identity and the resolved-count gap
+    derive from published aggregates and do not.</p>
+  </div>
+
+</main>
+</body>
+</html>
