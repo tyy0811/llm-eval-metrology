@@ -41,6 +41,10 @@ DERIVED = HERE / "derived"
 MANIFESTS = HERE / "manifests"
 MANIFEST_PATH = MANIFESTS / "upstream_digests.json"
 
+sys.path.insert(0, str(HERE.parent.parent))
+
+from metrology.reporting import require_canonical_date  # noqa: E402
+
 # Pinned in docs/recon_swebench.md. Changing any of these changes what "the board" and "the
 # artifacts" mean, and every committed checksum becomes stale.
 BOARD_COMMIT = "7c4289f30aa1a1c63c2e2a25aae30c16d92b5114"
@@ -514,6 +518,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.bootstrap and not args.fetch_date:
         parser.error("--bootstrap requires --fetch-date; a manifest must not invent its own date")
+    if args.bootstrap:
+        # Rejected here, before any network call, rather than after the fetch has already run.
+        args.fetch_date = require_canonical_date(args.fetch_date, "--fetch-date")
 
     if not args.bootstrap and not MANIFEST_PATH.exists():
         raise GateFailure(
@@ -606,11 +613,11 @@ def main(argv: list[str] | None = None) -> int:
             "aggregates.json": sha256(aggregates.encode("utf-8")),
             "rows": len(rows),
         },
-        "fetch_date": (
-            args.fetch_date
-            if args.bootstrap
-            else json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["fetch_date"]
-        ),
+        # Not read back from MANIFEST_PATH on a normal run: a normal run never writes the
+        # manifest (only the `if args.bootstrap:` branch below calls atomic_write on it), so the
+        # committed date cannot be restamped regardless of what this key holds here. On a normal
+        # run `compare_manifest` also never reads `fetch_date`, so this value is inert.
+        "fetch_date": args.fetch_date,
     }
 
     if args.bootstrap:

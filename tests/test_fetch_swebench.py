@@ -585,10 +585,56 @@ class TestFetchDate:
     def test_the_manifest_carries_the_fetch_date(self) -> None:
         assert self.manifest()["fetch_date"] == "2026-07-29"
 
-    def test_bootstrap_requires_an_explicit_fetch_date(self) -> None:
-        """--bootstrap must never invent a date."""
+    def test_bootstrap_requires_an_explicit_fetch_date(self, tmp_path, monkeypatch, capsys) -> None:
+        """--bootstrap must never invent a date, and must reject before any network call.
+
+        `fetch_bytes` is patched to blow up loudly if reached, so a regression that lets the
+        guard fall through fails on `boom`'s message rather than performing a live fetch that
+        overwrites the committed manifest, as the unguarded RED-phase run of this test once did.
+        """
+
+        def boom(url: str):
+            raise AssertionError("guard did not fire, network reached")
+
+        monkeypatch.setattr(fetch, "fetch_bytes", boom)
+        monkeypatch.setattr(fetch, "MANIFEST_PATH", tmp_path / "m.json")
+
         with pytest.raises(SystemExit):
             fetch.main(["--bootstrap"])
+
+        # pytest.raises(SystemExit) alone passes for any argparse failure, so renaming or
+        # deleting --bootstrap would keep the test green. Pin the actual reason.
+        assert "--bootstrap requires --fetch-date" in capsys.readouterr().err
+
+    def test_bootstrap_with_a_fetch_date_reaches_past_the_guard(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The positive control: the guard rejects the missing-date case and only that case."""
+
+        def boom(url: str):
+            raise AssertionError("reached the network")
+
+        monkeypatch.setattr(fetch, "fetch_bytes", boom)
+        monkeypatch.setattr(fetch, "MANIFEST_PATH", tmp_path / "m.json")
+
+        with pytest.raises(AssertionError, match="reached the network"):
+            fetch.main(["--bootstrap", "--fetch-date", "2026-07-29"])
+
+    def test_a_malformed_fetch_date_is_rejected_before_the_fetch(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """`--bootstrap` requiring *some* value for --fetch-date is not the same guard as
+        requiring a *canonical* one; a non-canonical value must not reach the network either.
+        """
+
+        def boom(url: str):
+            raise AssertionError("reached the network with a malformed date still unrejected")
+
+        monkeypatch.setattr(fetch, "fetch_bytes", boom)
+        monkeypatch.setattr(fetch, "MANIFEST_PATH", tmp_path / "m.json")
+
+        with pytest.raises(ValueError, match="canonical"):
+            fetch.main(["--bootstrap", "--fetch-date", "2026-7-29"])
 
     def test_fetch_date_must_be_canonical(self) -> None:
         from metrology.reporting import require_canonical_date
@@ -596,4 +642,7 @@ class TestFetchDate:
         for bad in ("2026-13-01", "2026-7-29", "20260729", "not-a-date", ""):
             with pytest.raises(ValueError, match="canonical"):
                 require_canonical_date(bad, "fetch_date")
+        for wrong_type in (20260729, None):
+            with pytest.raises(TypeError, match="string"):
+                require_canonical_date(wrong_type, "fetch_date")
         assert require_canonical_date("2026-07-29", "fetch_date") == "2026-07-29"

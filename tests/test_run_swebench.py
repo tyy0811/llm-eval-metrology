@@ -309,10 +309,11 @@ class TestCommittedCards:
             assert card["provenance"]["pinned_revision"].startswith("2f15350")
 
     def test_the_fetch_date_is_a_real_committed_date(self) -> None:
-        import re
+        """A regex like \\d{4}-\\d{2}-\\d{2} would accept 2026-13-01; require a real date."""
+        from metrology.reporting import require_canonical_date
 
         for card in self.cards()["pairs"].values():
-            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", card["provenance"]["fetch_date"])
+            require_canonical_date(card["provenance"]["fetch_date"], "fetch_date")
 
     def test_the_widest_gap_card_discloses_the_malformed_checked_field(self) -> None:
         """D8: the card must not quietly clean up its own source."""
@@ -364,6 +365,12 @@ class TestMainWiring:
     superseded per-gap calculation. Unit tests on the helper could not see that; only a test that
     goes through the live path can.
     """
+
+    #: Deliberately not "2026-07-29": a card that showed the real committed date would still
+    #: pass every other assertion here even if `run.py` obtained it from somewhere other than
+    #: this fixture's manifest. Using a date that cannot be the real one makes the manifest the
+    #: only possible source a passing test can have come from.
+    FETCH_DATE = "2020-02-29"
 
     def build_inputs(self, tmp_path, resolved: list[int], substitutions=()):
         """A miniature experiment on disk: labels, aggregates, sidecar, and a matching manifest."""
@@ -442,7 +449,7 @@ class TestMainWiring:
                         name: hashlib.sha256((derived / name).read_bytes()).hexdigest()
                         for name in ("labels.csv", "aggregates.json", "unevaluated.json")
                     },
-                    "fetch_date": "2026-07-29",
+                    "fetch_date": self.FETCH_DATE,
                 },
                 indent=2,
             ),
@@ -464,6 +471,25 @@ class TestMainWiring:
 
         results = json.loads((tmp_path / "results" / "results.json").read_text(encoding="utf-8"))
         assert results["primary"]["separable_count"] == 2
+
+    def test_the_card_fetch_date_comes_from_the_manifest(self, tmp_path, monkeypatch) -> None:
+        """The task's headline claim, checked behaviorally rather than by grepping source text.
+
+        `TestFetchDateSource` (test_run_defines_no_canonical_fetch_date_literal) only proves the
+        old literal is gone; it would still pass if `run.py` obtained a valid date from anywhere
+        else, including a different literal in a form a grep cannot see. `FETCH_DATE` is not the
+        real committed "2026-07-29", so the manifest is the only place a passing run could have
+        gotten it from.
+        """
+        derived, manifests = self.build_inputs(tmp_path, [100, 60, 54])
+        self.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        assert run.main([]) == 0
+
+        cards = json.loads((tmp_path / "results" / "cards.json").read_text(encoding="utf-8"))
+        assert cards["family"]["provenance"]["fetch_date"] == self.FETCH_DATE
+        for card in cards["pairs"].values():
+            assert card["provenance"]["fetch_date"] == self.FETCH_DATE
 
     def test_a_substitution_halts_main_before_any_analysis(self, tmp_path, monkeypatch) -> None:
         derived, manifests = self.build_inputs(
