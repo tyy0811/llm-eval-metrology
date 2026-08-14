@@ -1203,3 +1203,65 @@ class TestFindingsMarkdownConditionals:
         assert_markdown_snapshot(
             "findings_block_nonzero.md", findings_markdown(results, aggregates)
         )
+
+
+class TestSharedSelectionRule:
+    """PREREG D8's rule must have exactly one implementation. run.py and report.py
+    both apply it, and two copies of a registered selection rule is the defect D1.12
+    exists to prevent (T3.4 spec section 2).
+    """
+
+    def test_the_registered_selection_on_the_committed_board(self) -> None:
+        from metrology.reporting import illustrative_pair_names
+
+        entries = sorted(corpus_documents()["aggregates"]["entries"], key=lambda e: e["rank"])
+        assert illustrative_pair_names(entries) == ["rank_1_vs_2", "rank_3_vs_4"]
+
+    def test_the_widest_gap_moves_the_second_selection(self) -> None:
+        from metrology.reporting import illustrative_pair_names
+
+        entries = copy.deepcopy(
+            sorted(corpus_documents()["aggregates"]["entries"], key=lambda e: e["rank"])
+        )
+        for entry in entries:
+            if entry["rank"] >= 17:
+                entry["resolved"] -= 9
+        assert illustrative_pair_names(entries) == ["rank_1_vs_2", "rank_16_vs_17"]
+
+    def test_a_tie_for_widest_breaks_by_earliest_rank(self) -> None:
+        from metrology.reporting import illustrative_pair_names
+
+        entries = copy.deepcopy(
+            sorted(corpus_documents()["aggregates"]["entries"], key=lambda e: e["rank"])
+        )
+        for entry in entries:
+            if entry["rank"] >= 17:
+                entry["resolved"] -= 7
+        assert illustrative_pair_names(entries) == ["rank_1_vs_2", "rank_3_vs_4"]
+
+    def test_a_widest_first_pair_yields_one_card(self) -> None:
+        from metrology.reporting import illustrative_pair_names
+
+        entries = copy.deepcopy(
+            sorted(corpus_documents()["aggregates"]["entries"], key=lambda e: e["rank"])
+        )
+        for entry in entries:
+            if entry["rank"] >= 2:
+                entry["resolved"] -= 20
+        assert illustrative_pair_names(entries) == ["rank_1_vs_2"]
+
+    def test_one_statistic_constant_serves_both_card_kinds(self) -> None:
+        """A family card and a pair card must not be able to name different
+        statistics for the same procedure."""
+        from metrology.reporting import STATISTIC_EXACT_MCNEMAR
+
+        cards = json.loads(
+            (
+                Path(__file__).resolve().parent.parent / "experiments/swebench/results/cards.json"
+            ).read_text(encoding="utf-8")
+        )
+        assert cards["family"]["family_finding"]["criterion"]["statistic"] == (
+            STATISTIC_EXACT_MCNEMAR
+        )
+        for card in cards["pairs"].values():
+            assert card["test"]["statistic"] == STATISTIC_EXACT_MCNEMAR

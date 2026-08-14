@@ -71,6 +71,30 @@ DECISION_RULES = (RULE_RAW, RULE_HOLM)
 REGISTERED_MDE_ALPHA = 0.05
 REGISTERED_TARGET_POWER = 0.80
 
+#: The registered statistic name, shared by the family card's criterion and every pair
+#: card's test block so the two cannot name different procedures.
+STATISTIC_EXACT_MCNEMAR = "exact_mcnemar_two_sided"
+
+
+def adjacent_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
+    """Pairs in published order. PREREG section 2 defines adjacency by that order."""
+    return [(entries[i], entries[i + 1]) for i in range(len(entries) - 1)]
+
+
+def illustrative_pair_names(entries: list[dict]) -> list[str]:
+    """PREREG deviation D8's registered selection rule, applied rather than hard-coded.
+
+    Render the first published adjacent pair, and the adjacent pair with the largest
+    published resolved-count gap, breaking a maximum-gap tie by earliest published rank.
+    Hard-coding the names would silently keep the old selection if the coverage rule ever
+    changed the set. One home only, because run.py and report.py both apply it (D1.12).
+    """
+    pairs = adjacent_pairs(entries)
+    gaps = [a["resolved"] - b["resolved"] for a, b in pairs]
+    widest = max(range(len(gaps)), key=lambda index: (gaps[index], -index))
+    chosen = [0, widest] if widest != 0 else [0]
+    return [f"rank_{pairs[i][0]['rank']}_vs_{pairs[i][1]['rank']}" for i in chosen]
+
 
 def _require_text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
@@ -482,7 +506,7 @@ def pair_card_json(report: PairReport) -> dict:
             "n_items": report.n_items,
         },
         "test": {
-            "statistic": "exact_mcnemar_two_sided",
+            "statistic": STATISTIC_EXACT_MCNEMAR,
             "convention": TWO_SIDED_CONVENTION,
             "p_value": report.p_value,
             "adjusted_p_value": report.adjusted_p_value,
@@ -542,7 +566,7 @@ def family_card_json(report: FamilyReport) -> dict:
             ),
         },
         "criterion": {
-            "statistic": "exact_mcnemar_two_sided",
+            "statistic": STATISTIC_EXACT_MCNEMAR,
             "convention": TWO_SIDED_CONVENTION,
             "correction": "holm",
             "alpha": report.alpha,

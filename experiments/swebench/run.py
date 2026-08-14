@@ -43,8 +43,10 @@ from metrology.power import mde_paired_binary  # noqa: E402
 from metrology.reporting import (  # noqa: E402
     PairCounts,
     Provenance,
+    adjacent_pairs,
     build_family_report,
     family_card_json,
+    illustrative_pair_names,
     pair_card_json,
     require_canonical_date,
     validate_card,
@@ -116,11 +118,6 @@ def verify_inputs() -> dict:
             "Re-run fetch.py before analysing."
         )
     return manifest
-
-
-def adjacent_pairs(entries: list[dict]) -> list[tuple[dict, dict]]:
-    """Pairs in published order. PREREG section 2 defines adjacency by that order."""
-    return [(entries[i], entries[i + 1]) for i in range(len(entries) - 1)]
 
 
 def discordant_counts(table, system_a: str, system_b: str) -> tuple[int, int]:
@@ -309,20 +306,6 @@ def check_analytic_expectation(family, aggregates: dict) -> None:
             f"separable count {family.separable_count} contradicts the analytic derivation, "
             f"which gives {expected}; the engine and the derivation disagree"
         )
-
-
-def illustrative_pair_names(entries: list[dict]) -> list[str]:
-    """PREREG deviation D8's registered selection rule, applied rather than hard-coded.
-
-    Render the first published adjacent pair, and the adjacent pair with the largest published
-    resolved-count gap, breaking a maximum-gap tie by earliest published rank. Hard-coding the
-    names would silently keep the old selection if the coverage rule ever changed the set.
-    """
-    pairs = adjacent_pairs(entries)
-    gaps = [a["resolved"] - b["resolved"] for a, b in pairs]
-    widest = max(range(len(gaps)), key=lambda index: (gaps[index], -index))
-    chosen = [0, widest] if widest != 0 else [0]
-    return [f"rank_{pairs[i][0]['rank']}_vs_{pairs[i][1]['rank']}" for i in chosen]
 
 
 def illustrative_card(family, entries: list[dict], name: str) -> dict:

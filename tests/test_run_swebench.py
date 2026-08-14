@@ -712,3 +712,13 @@ class TestFetchDateSource:
         )
         assert "CANONICAL_FETCH_DATE" not in source
         assert "2026-07-29" not in source
+
+
+class TestSelectionRuleHasOneHome:
+    def test_run_does_not_define_its_own_copies(self) -> None:
+        """Imported from reporting, not redefined, so the two callers cannot drift."""
+        source = (Path(__file__).resolve().parent.parent / "experiments/swebench/run.py").read_text(
+            encoding="utf-8"
+        )
+        assert "def illustrative_pair_names" not in source
+        assert "def adjacent_pairs" not in source
