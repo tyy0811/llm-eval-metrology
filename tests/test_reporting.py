@@ -1229,7 +1229,7 @@ class TestSharedSelectionRule:
         assert illustrative_pair_names(entries) == ["rank_1_vs_2", "rank_16_vs_17"]
 
     def test_a_tie_for_widest_breaks_by_earliest_rank(self) -> None:
-        from metrology.reporting import illustrative_pair_names
+        from metrology.reporting import adjacent_pairs, illustrative_pair_names
 
         entries = copy.deepcopy(
             sorted(corpus_documents()["aggregates"]["entries"], key=lambda e: e["rank"])
@@ -1237,6 +1237,17 @@ class TestSharedSelectionRule:
         for entry in entries:
             if entry["rank"] >= 17:
                 entry["resolved"] -= 7
+        # The control's premise is a genuine two-way tie for the widest gap. If a future
+        # aggregates.json shifts so this mutation no longer ties, the no-tie answer is also
+        # rank_3_vs_4, and the assertion below would keep passing while silently ceasing to
+        # test the tie-break rule at all. Verify the premise before trusting the answer.
+        gaps = [a["resolved"] - b["resolved"] for a, b in adjacent_pairs(entries)]
+        widest = max(gaps)
+        tied_at_widest = [index for index, gap in enumerate(gaps) if gap == widest]
+        assert len(tied_at_widest) == 2, (
+            f"expected exactly one other index tied with index 2 for the widest gap, got "
+            f"{tied_at_widest}; this control no longer exercises a real tie"
+        )
         assert illustrative_pair_names(entries) == ["rank_1_vs_2", "rank_3_vs_4"]
 
     def test_a_widest_first_pair_yields_one_card(self) -> None:
@@ -1263,5 +1274,17 @@ class TestSharedSelectionRule:
         assert cards["family"]["family_finding"]["criterion"]["statistic"] == (
             STATISTIC_EXACT_MCNEMAR
         )
+        assert cards["pairs"]
         for card in cards["pairs"].values():
             assert card["test"]["statistic"] == STATISTIC_EXACT_MCNEMAR
+
+    def test_the_statistic_literal_has_one_home(self) -> None:
+        """The value-equality check above passes even if a second raw literal is
+        re-inlined beside the constant, e.g. in family_card_json, because both would
+        still equal the same string. That is the D1.12 defect for the constant, and
+        the two moved functions already have a source-level one-home guard
+        (tests/test_run_swebench.py TestSelectionRuleHasOneHome); this mirrors it."""
+        source = (Path(__file__).resolve().parent.parent / "metrology/reporting.py").read_text(
+            encoding="utf-8"
+        )
+        assert source.count('"exact_mcnemar_two_sided"') == 1

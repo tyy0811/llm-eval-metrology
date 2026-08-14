@@ -87,7 +87,14 @@ def illustrative_pair_names(entries: list[dict]) -> list[str]:
     Render the first published adjacent pair, and the adjacent pair with the largest
     published resolved-count gap, breaking a maximum-gap tie by earliest published rank.
     Hard-coding the names would silently keep the old selection if the coverage rule ever
-    changed the set. One home only, because run.py and report.py both apply it (D1.12).
+    changed the set. One home only: run.py applies it today, and report.py will apply it
+    once T3.4 finishes wiring the card renderer (D1.12).
+
+    Entries must already be in published rank-ascending order. "Earliest published rank"
+    is implemented as earliest list index, and this function neither sorts nor checks that.
+    `experiments/swebench/report.py` validates the invariant before it reads the array, but
+    that guard lives outside `metrology/` and is not applied here, so every caller is
+    responsible for satisfying it before calling.
     """
     pairs = adjacent_pairs(entries)
     gaps = [a["resolved"] - b["resolved"] for a, b in pairs]

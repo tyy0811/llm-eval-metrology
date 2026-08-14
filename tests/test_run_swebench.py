@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from metrology import reporting
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENT = REPO_ROOT / "experiments" / "swebench"
 
@@ -715,10 +717,17 @@ class TestFetchDateSource:
 
 
 class TestSelectionRuleHasOneHome:
+    """Imported from reporting, not redefined, so the two callers cannot drift."""
+
     def test_run_does_not_define_its_own_copies(self) -> None:
-        """Imported from reporting, not redefined, so the two callers cannot drift."""
         source = (Path(__file__).resolve().parent.parent / "experiments/swebench/run.py").read_text(
             encoding="utf-8"
         )
         assert "def illustrative_pair_names" not in source
         assert "def adjacent_pairs" not in source
+        # A source grep alone would still pass for a rebinding like
+        # `adjacent_pairs = lambda entries: ...`, which defines no `def` but breaks the
+        # very drift property this class exists to guard. Assert the positive property
+        # too: run.py's names must be the same objects as reporting's, not lookalikes.
+        assert run.adjacent_pairs is reporting.adjacent_pairs
+        assert run.illustrative_pair_names is reporting.illustrative_pair_names
