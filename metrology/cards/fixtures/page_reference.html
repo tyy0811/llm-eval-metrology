@@ -1,3 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card set page reference</title>
+<style>
 :root {
   --ground: #f6f8fa;
   --panel: #ffffff;
@@ -312,3 +319,280 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
 /* The page gap, applied inside the region: open, the components are siblings here exactly as they
    are siblings of main.page in the rendered document. */
 .technical-apparatus > * + * { margin-top: 1.75rem; }
+</style>
+</head>
+<body>
+<main class="page">
+
+  <div class="stamp-illustrative">
+    <strong>Layout and copy reference. Not a published result.</strong>
+    <span>The finding layer and both cards carry the committed Experiment 1 figures rather than
+    invented ones, because public copy cannot be judged against quantities that are not real, and
+    a test holds each of them to the corpus at its declared source path. The table is the
+    exception: its four rows stand in for the nineteen the shipped document carries, which is a
+    fixture convenience that settles nothing about which pairs ship, and its cell figures stay
+    synthetic.</span>
+  </div>
+
+  <div>
+    <h1>Card set page reference</h1>
+    <p class="note">The whole document, in the order a reader meets it. Notes for review are at
+    the foot of the page.</p>
+  </div>
+
+  <!-- TIER 1: THE FINDING LAYER. Always visible, and the whole of the first reading. It states no
+       significance value, names no system, uses the correction's name nowhere, shows no
+       provenance and carries no deviation label. -->
+  <article class="card finding" aria-labelledby="finding-lead">
+    <hr class="card-rail">
+
+    <section>
+      <p class="finding-lead" id="finding-lead">Using the statistical test chosen in advance, no
+      neighboring top-20 pair showed a reliable difference.</p>
+      <p class="banner-figure"><b>0 of 19</b> neighboring pairs showed a reliable difference</p>
+      <p class="scope-line">The top 20 creates 19 neighboring comparisons, each measured on 500
+      tasks.</p>
+    </section>
+
+    <section>
+      <div class="lead-scale">
+        <div class="lead-scale-row is-observed">
+          <div class="strip" aria-hidden="true">
+            <div class="strip-a" style="flex: 7;"></div>
+            <div class="strip-b" style="flex: 3;"></div>
+          </div>
+          <p class="strip-legend"><span>largest lead</span><span>7 tasks</span></p>
+        </div>
+        <div class="lead-scale-row is-mark">
+          <div class="strip" aria-hidden="true">
+            <div class="strip-a" style="flex: 10;"></div>
+          </div>
+          <p class="strip-legend"><span>minimum opening lead</span><span>10 tasks</span></p>
+        </div>
+      </div>
+
+      <p class="reading">It works like a qualifying mark. Before a difference between two
+      neighboring systems could count as reliable, that pair needed a lead of at least 10 tasks.
+      The largest lead anywhere in the top 20 was 7. No pair reached the mark, so none could
+      qualify. Reaching the mark would not have settled a comparison on its own; it is the point at
+      which the question becomes answerable at all.</p>
+
+      <p class="reading">Task-by-task results add detail but cannot change this. A pair's lead sets
+      a ceiling on how strong its evidence can get, and a lead of 7 stays under the mark even if
+      every task the two systems disagreed on had gone the same way. The headline follows from the
+      published totals alone.</p>
+    </section>
+
+    <section>
+      <ul class="non-claims">
+        <li>This does not show the systems are equivalent. Not finding a difference is not the same
+        as showing there is none, and this experiment registered no equivalence test.</li>
+        <li>This does not cover non-adjacent systems. Only neighboring pairs were compared, so it
+        says nothing about how rank 1 compares with rank 20.</li>
+      </ul>
+    </section>
+  </article>
+
+  <!-- TIER 2: THE TECHNICAL APPARATUS. Closed by default, fully interactive, no open attribute.
+       Everything the contract moves out of the first reading lives in here, one interaction away:
+       the family card, the full table, and the selected pair cards. -->
+  <details class="technical-apparatus">
+    <summary>Show statistical details and audit trail</summary>
+
+    <article class="card" aria-labelledby="family-summary">
+      <hr class="card-rail">
+      <section>
+        <h2 class="eyebrow" id="family-summary">Benchmark resolving power</h2>
+        <p class="banner-figure"><b>0 of 19</b> adjacent pairs separable</p>
+        <p class="banner-sub">Separable means the family&#x27;s Holm procedure could reject this pair under best-case overlaps; not separable is a stronger result than an observed test merely not rejecting</p>
+        <p class="scope-line">Adjacent pairs only. Non-adjacent comparisons are out of scope.</p>
+      </section>
+      <section>
+        <p class="eyebrow">The limit, and what follows from it</p>
+        <dl class="pairing">
+          <dt>Family gateway floor</dt><dd>10</dd>
+          <dt>Largest observed adjacent gap</dt><dd>7</dd>
+        </dl>
+        <p class="what-would-it-take">Every adjacent gap sits below the gateway floor of 10, so no pair can open the family and none can separate at any discordance configuration.</p>
+      </section>
+      <section>
+        <p class="eyebrow">Observed, for contrast</p>
+        <dl class="pairing">
+          <dt>Resolved by the observed test</dt><dd>0 of 19</dd>
+          <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+          <dt>Separability basis</dt><dd>Holm applied to per-pair minimum attainable p-values</dd>
+        </dl>
+      </section>
+      <section>
+        <details>
+          <summary>Statistics</summary>
+            <dl class="kv">
+              <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+              <dt>Convention</dt><dd>doubled-tail</dd>
+              <dt>Correction</dt><dd>Holm, alpha 0.05</dd>
+              <dt>First critical value</dt><dd>0.00263157894736842</dd>
+              <dt>Secondary family size</dt><dd>10</dd>
+              <dt>Secondary gateway floor</dt><dd>9</dd>
+              <dt>Conditional on</dt><dd>integrity gate 3 passes, so derived counts match published rates; the coverage rule substitutes no entry</dd>
+            </dl>
+        </details>
+      </section>
+      <section>
+        <p class="eyebrow">Provenance</p>
+          <div class="seal">
+            <span>source <b>SWE-bench/swe-bench.github.io</b></span>
+            <span>revision <b>7c4289f30aa1a1c63c2e2a25aae30c16d92b5114</b></span>
+            <span>fetched <b>2026-07-29</b></span>
+            <span>headline caveats <b>none</b></span>
+            <span>observed figure caveats <b>D4 harness comparability</b></span>
+            <span>observed figures from <b>SWE-bench/experiments 2f15350cd32becc4569e0d826361048555b605c0</b></span>
+          </div>
+      </section>
+    </article>
+
+    <p class="note">The shipped document carries all nineteen adjacent pairs in this table, and
+    both selected pair cards. The four rows below are a fixture convenience and establish nothing
+    about which pairs ship: the table is built from every adjacent pair, and the pair cards come
+    from the registered selection rule. These four rows and their cell figures are synthetic, as
+    approved in <code>table_reference.html</code>.</p>
+
+    <div class="pair-table-block">
+      <div class="pair-table-scroll" tabindex="0" role="region" aria-label="Pair table">
+        <table class="pair-table">
+          <caption data-element="pair table">Every adjacent pair, as tested</caption>
+          <thead>
+            <tr>
+              <th scope="col">pair</th>
+              <th scope="col">resolved-count gap</th>
+              <th scope="col">observed discordance</th>
+              <th scope="col">observed p-value</th>
+              <th scope="col">Holm-adjusted p-value</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>illustrative_a_vs_b</td>
+              <td>1111</td>
+              <td>9999</td>
+              <td>1.000</td>
+              <td>1.000</td>
+            </tr>
+            <tr>
+              <td>illustrative_b_vs_c</td>
+              <td>3333</td>
+              <td>9999</td>
+              <td>0.888</td>
+              <td>1.000</td>
+            </tr>
+            <tr>
+              <td>illustrative_c_vs_d</td>
+              <td>5555</td>
+              <td>9999</td>
+              <td>0.555</td>
+              <td>1.000</td>
+            </tr>
+            <tr>
+              <td>illustrative_d_vs_e</td>
+              <td>7777</td>
+              <td>9999</td>
+              <td>0.222</td>
+              <td>1.000</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="pair-table-note" data-element="D4 disclosure">The observed discordance and both
+      p-value columns read per-instance artifacts and carry the D4 harness comparability caveat:
+      submissions do not record their harness version. The pair identity and the resolved-count gap
+      derive from published aggregates and do not.</p>
+    </div>
+
+    <article class="card" aria-labelledby="pair-rank_3_vs_4-0433f890">
+      <hr class="card-rail is-open">
+      <section>
+        <h2 class="eyebrow" id="pair-rank_3_vs_4-0433f890">Pair verdict: Ranks 3 and 4</h2>
+        <p class="verdict-stamp is-open">NOT RESOLVED</p>
+        <p class="reading">These two systems disagree on 65 of 500 instances, and the disagreement runs 36 to 29. That edge of 7 does not resolve the comparison at this correction level; the observed test does not determine which system is better.</p>
+      </section>
+      <section>
+        <p class="eyebrow">Where they disagree</p>
+          <div class="strip" role="img" aria-label="65 disagreements, 36 favour 20250928_trae_doubao_seed_code and 29 favour 20251120_livesweagent_gemini-3-pro-preview">
+            <div class="strip-a" style="flex: 36;"></div>
+            <div class="strip-b" style="flex: 29;"></div>
+          </div>
+          <p class="strip-legend"><span>36 favour 20250928_trae_doubao_seed_code</span><span>29 favour 20251120_livesweagent_gemini-3-pro-preview</span></p>
+          <div class="ruler">
+            <p class="eyebrow">Net edge, against what it would take</p>
+            <div class="ruler-track">
+              <div class="ruler-line"></div>
+              <div class="ruler-mark observed" style="left: 10.8%;">
+                <span>observed 7</span><i></i>
+              </div>
+              <div class="ruler-mark required" style="left: 38.5%;">
+                <span>required 25</span><i></i>
+              </div>
+            </div>
+            <p class="ruler-scale"><span>0, balanced</span><span>65, all one way</span></p>
+          </div>
+          <p class="what-would-it-take">To separate at this discordance the split would have to reach 45 to 20, a net edge of 25.</p>
+      </section>
+      <section>
+        <details>
+          <summary>Statistics</summary>
+            <dl class="kv">
+              <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+              <dt>Convention</dt><dd>doubled-tail, not mid-p</dd>
+              <dt>p-value</dt><dd>0.457</dd>
+              <dt>Holm-adjusted p</dt><dd>1.000</dd>
+              <dt>Alpha</dt><dd>0.05</dd>
+              <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+              <dt>Ruler threshold</dt><dd>0.00263157894736842, the family&#x27;s first critical value, the same bar as the gap floor</dd>
+              <dt>Discordance rate</dt><dd>0.130, derived from 36 plus 29 over 500</dd>
+              <dt>MDE</dt><dd>23.2 instances at alpha 0.05, power 0.80</dd>
+              <dt>MDE alpha basis</dt><dd>registered uncorrected level, not the family correction</dd>
+            </dl>
+        </details>
+      </section>
+      <section>
+        <p class="eyebrow">Provenance</p>
+          <div class="seal">
+            <span>source <b>SWE-bench/experiments</b></span>
+            <span>revision <b>2f15350cd32becc4569e0d826361048555b605c0</b></span>
+            <span>fetched <b>2026-07-29</b></span>
+            <span>instrument <b>hidden-tests</b></span>
+            <span>applies to secondary figures <b>D4 harness comparability, upstream &#x27;checked&#x27; field for rank 4 is a sentence, not a boolean: &#x27;false (See README.md for info on how to get your results verified)&#x27;</b></span>
+          </div>
+      </section>
+    </article>
+  </details>
+
+  <div>
+    <h2 class="eyebrow">Notes for review</h2>
+    <p class="note">The question this page exists to answer: does a reader who sees only the first
+    screen come away with a correct, complete and non-misleading understanding of the finding?
+    Everything above the disclosure is that first reading. It states no significance value, names
+    no system, uses the correction's name nowhere, shows no provenance and carries no deviation
+    label, and a test asserts each of those against that fragment rather than against the page.
+    The disclosure is closed by default and live, which is what a first-time reader meets. A
+    reference that shipped it open would approve a hierarchy nobody encounters, and would be the
+    same failure as approving a renderer's own output.
+    The comparison under the headline is two measures on one scale whose full length is the mark,
+    so the observed lead is seen to stop short of it rather than described as doing so. It reuses
+    the discordance strip rather than the pair card's ruler, and the reason is a measurement: the
+    ruler's marker labels are short enough to sit either side of one track and "minimum opening
+    lead" is not, so at a 320px viewport two centred labels would overlap.
+    The finding layer carries no review annotations, unlike the sibling fixtures. It is the copy
+    under approval, and tags interleaved with it would change the reading being judged. The
+    annotations on the table are the same device as in <code>table_reference.html</code>, for
+    review only, and the renderer does not emit them.
+    The pair card is headed "Ranks 3 and 4". The renderer emits "rank_3_vs_4" today; the
+    conversion is built in a later task and the approved target is what is shown here.
+    The document carries the same three characters three times, for two different quantities: the
+    observed count in the finding layer, the separable count on the family banner, and the resolved
+    count on the family card's observed line. Only their labels tell them apart, and collapsing the
+    apparatus is what keeps the first reading down to one of them.</p>
+  </div>
+
+</main>
+</body>
+</html>

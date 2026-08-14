@@ -245,6 +245,80 @@ h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
   font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--accent); margin-left: 0.6rem; opacity: 0.75;
 }
+
+/* The plain-language finding layer (T3.4), approved as fixtures/page_reference.html before any
+   renderer for it existed (D1.3).
+   It is the document's first reading, and it rides on the card surface rather than sitting bare
+   on --ground: the apparatus below it is a bordered region, and a bare finding layer above a
+   bordered one would make the apparatus read as the primary object on the page. So the element
+   carries .card as well as .finding and takes the card's surface, section padding and hairlines
+   unchanged; .finding adds only what the card language has no word for.
+   It is not a card in the card-set sense, and the differences are all absences: no eyebrow, no
+   verdict stamp, no provenance seal, because Tier 1 shows no provenance at all. What separates it
+   from the cards below is that it is first, that its lead sentence is the largest prose on the
+   page, and that the banner figure is the only figure in it. */
+.finding-lead {
+  margin: 0 0 0.9rem;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+/* The lead against the mark. Contract item 3 asks the reader to see 7 falling short of 10 rather
+   than read it, so the two measures are drawn on one scale whose full length is the mark: the
+   observed bar stops at seven tenths of a track the mark fills, and the shortfall is what is
+   left over.
+   The bar itself is .strip, the sheet's existing proportional bar, not a second one, and the
+   colours are the ruler's mapping: --state-open for the observed measure, --accent for the
+   requirement.
+   The ruler's layout is deliberately not reused, and the reason is measured rather than aesthetic.
+   The pair card's markers read "observed 7" and "required 25", 10 and 11 characters, and sit
+   either side of one track. These read "largest lead" and "minimum opening lead", which are the
+   contract's words and not ours to shorten; at the ruler's 0.72rem mono the longer of the two is
+   about 200px against the 230px of track a 320px viewport leaves, so two centred marker labels on
+   one line overlap at every narrow width this document has to work at. One row per measure gives
+   each label a whole line to wrap into. */
+.lead-scale { margin: 0 0 0.5rem; }
+.lead-scale-row + .lead-scale-row { margin-top: 0.85rem; }
+.lead-scale-row.is-observed .strip-a { background: var(--state-open); }
+
+/* The two non-claims are limits on the finding, not findings, so they take the scope line's
+   language: the 2px --rule-strong left border the sheet already uses to bound a claim on the
+   family card, and the muted ink that goes with it. A list rather than a paragraph because there
+   are exactly two bounds and a reader who skims this section has to come away with two. */
+.non-claims { margin: 0; padding: 0; list-style: none; }
+.non-claims li {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-left: 2px solid var(--rule-strong);
+  padding-left: 0.7rem;
+}
+.non-claims li + li { margin-top: 0.7rem; }
+
+/* The technical apparatus (T3.4): the collapsed half of the document hierarchy.
+   A divider was the earlier proposal and it fails the presentation contract, because it leaves
+   the duplicate headline, the p-values, the system identifiers and the provenance immediately
+   visible, which is exactly what the contract moves out of the first reading. Only a closed
+   details makes that first reading uncontested. It is closed by default and fully interactive.
+   It is a bordered region rather than a bare summary line for two reasons. Closed, it is the one
+   control on the page, and a single line of small uppercase mono is easy to skim past; the box
+   gives the reader something to aim at. Open, the same box is the boundary of the apparatus, so
+   it is visible where the technical half starts and ends around three components that each carry
+   a surface of their own.
+   It takes no background: the cards and the table block inside it are already on --panel, and a
+   --panel region holding --panel components flattens both. */
+.technical-apparatus {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1.1rem 1.25rem;
+  /* The sheet sizes `details` at 0.86rem for the small disclosures inside a card. This one wraps
+     whole cards, so it stays at the page's size and lets each component keep its own scale. */
+  font-size: 1rem;
+}
+
+/* The page gap, applied inside the region: open, the components are siblings here exactly as they
+   are siblings of main.page in the rendered document. */
+.technical-apparatus > * + * { margin-top: 1.75rem; }
 </style>
 </head>
 <body>

@@ -10,7 +10,9 @@ edge-safe marker at position zero, and the nonzero-gap ruler case.
 
 from __future__ import annotations
 
+import json
 import re
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -757,3 +759,402 @@ class TestTableReference:
         )
         for selector in ("table", "thead", "tbody", "caption"):
             assert selector in css
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PAGE_REFERENCE = FIXTURES / "page_reference.html"
+
+#: The three committed corpus documents the page reference quotes. Section 12.1 inverts the
+#: fixture convention for this one file: it carries real figures, so it can go stale, so every
+#: figure is held to the document it came from.
+CORPUS_FILES = {
+    "results": REPO_ROOT / "experiments" / "swebench" / "results" / "results.json",
+    "aggregates": REPO_ROOT / "experiments" / "swebench" / "derived" / "aggregates.json",
+    "cards": REPO_ROOT / "experiments" / "swebench" / "results" / "cards.json",
+}
+
+#: Every numeral the finding layer prints, in document order: the pattern that locates it and the
+#: source-qualified path it must equal. `literal:` marks a numeral that is part of the copy rather
+#: than a corpus figure, so that the totality assertion below can still account for it.
+#:
+#: The two `family_size` entries are the collision spec section 10.2 warns about:
+#: `aggregates:family_size` is the board, `results:primary.family_size` is the adjacent pairs.
+FINDING_FIGURES = (
+    (r"no neighboring top-(\d+) pair showed a reliable difference", "aggregates:family_size"),
+    (r"(\d+) of \d+ neighboring pairs", "results:primary.headline.distinguishable_count"),
+    (r"\d+ of (\d+) neighboring pairs", "results:primary.family_size"),
+    (r"The top (\d+) creates", "aggregates:family_size"),
+    (r"creates (\d+) neighboring comparisons", "results:primary.family_size"),
+    (r"each measured on (\d+) tasks", "aggregates:n_items"),
+    (r"largest lead (\d+) tasks", "results:primary.largest_observed_gap"),
+    (r"minimum opening lead (\d+) tasks", "results:primary.first_rejection_gap_floor"),
+    (r"needed a lead of at least (\d+) tasks", "results:primary.first_rejection_gap_floor"),
+    (r"anywhere in the top (\d+) was", "aggregates:family_size"),
+    (r"in the top \d+ was (\d+)\.", "results:primary.largest_observed_gap"),
+    (r"a lead of (\d+) stays under the mark", "results:primary.largest_observed_gap"),
+    (r"how rank (\d+) compares", "literal:1"),
+    (r"compares with rank (\d+)\.", "aggregates:family_size"),
+)
+
+#: The lead sentence, binding verbatim from the presentation contract (spec section 1.1 item 1).
+LEAD_SENTENCE = (
+    "Using the statistical test chosen in advance, no neighboring top-20 pair showed a "
+    "reliable difference."
+)
+
+
+def corpus_value(qualified_path: str) -> int:
+    """Resolve a source-qualified path such as `results:primary.family_size` against the corpus."""
+    source, _, dotted = qualified_path.partition(":")
+    if source == "literal":
+        return int(dotted)
+    node = json.loads(CORPUS_FILES[source].read_text(encoding="utf-8"))
+    for key in dotted.split("."):
+        node = node[key]
+    return node
+
+
+def page_reference_text() -> str:
+    return PAGE_REFERENCE.read_text(encoding="utf-8")
+
+
+def finding_region(text: str) -> str:
+    """The finding layer fragment alone.
+
+    Tier 1's prohibitions are properties of the first reading, and the apparatus below it states
+    p-values, names systems and carries the provenance seal. Asserted against the whole page they
+    would fail for the wrong reason; asserted against the page with the apparatus stripped by a
+    loose split they could pass for the wrong reason.
+    """
+    opening = '<article class="card finding"'
+    start = text.index(opening)
+    end = text.index("</article>", start) + len("</article>")
+    return text[start:end]
+
+
+def finding_prose(text: str) -> str:
+    """The finding layer with tags removed and whitespace collapsed, as a reader sees it."""
+    stripped = re.sub(r"<!--.*?-->", " ", finding_region(text), flags=re.DOTALL)
+    return " ".join(re.sub(r"<[^>]+>", " ", stripped).split())
+
+
+def apparatus_span(text: str) -> tuple[int, int]:
+    """Index range of `details.technical-apparatus`, balancing the nested card disclosures.
+
+    The family card and the pair card each carry their own `details`, so the first `</details>`
+    after the opening tag closes a card's statistics block, not the apparatus.
+    """
+    start = text.index('<details class="technical-apparatus"')
+    depth = 0
+    for match in re.finditer(r"</?details\b", text[start:]):
+        depth += 1 if match.group(0) == "<details" else -1
+        if depth == 0:
+            return start, text.index(">", start + match.end()) + 1
+    raise AssertionError("details.technical-apparatus is never closed")
+
+
+class TestPageReference:
+    """T3.4 full-page reference: the second D1.3 gate.
+
+    The document hierarchy and the public copy are approved here, before any renderer for the
+    finding layer exists. A renderer written first would make its own assembly the baseline, which
+    is the failure D1.3 exists to prevent and which the component reference already prevented once.
+
+    Two properties are specific to this file. The apparatus must be closed, because a document that
+    renders every component correctly and leaves them all immediately visible passes every other
+    control and still fails the presentation contract. And the figures are real, per spec section
+    12.1, so the usual fixture protection of invented numbers does not apply and staleness has to
+    be guarded instead.
+    """
+
+    def test_the_reference_exists_and_says_what_it_is(self) -> None:
+        """The stamp inverts, and an inverted stamp can invert too far.
+
+        Copying the sibling fixtures' wording would put "every value on this page is invented" over
+        the committed Experiment 1 figures, which is a false sentence on the one page whose purpose
+        is truthful public copy. So the stamp is asserted to claim the opposite, and the sibling
+        fixtures' claim is asserted absent.
+        """
+        assert PAGE_REFERENCE.is_file()
+        text = page_reference_text()
+
+        opening = '<div class="stamp-illustrative">'
+        assert opening in text
+        stamp = " ".join(text.split(opening, 1)[1].split("</div>", 1)[0].split())
+        assert "Not a published result." in stamp
+        assert "committed Experiment 1" in stamp
+        assert "rather than invented ones" in stamp
+        for sibling_claim in (
+            "Every value on this page is invented",
+            "No experiment has run.",
+            "No experiment produced them.",
+        ):
+            assert sibling_claim not in stamp, sibling_claim
+        assert "nineteen" in stamp
+        assert "synthetic" in stamp
+        assert text.index(opening) < text.index('<article class="card finding"')
+
+    def test_the_apparatus_is_closed(self) -> None:
+        """A reference that shipped the apparatus open would approve a hierarchy nobody meets.
+
+        `open` on the element, or a second disclosure somewhere, and the reviewer sees the
+        p-values, the identifiers and the provenance in the first reading, which is exactly what
+        the contract moves out of it.
+        """
+        text = page_reference_text()
+        assert text.count('<details class="technical-apparatus"') == 1
+
+        start, _ = apparatus_span(text)
+        opening_tag = text[start : text.index(">", start) + 1]
+        assert "open" not in opening_tag, opening_tag
+        assert "<summary>Show statistical details and audit trail</summary>" in text
+
+    def test_the_apparatus_holds_the_family_card_the_table_and_the_pair_card(self) -> None:
+        """Siblings of the disclosure, not children of it, is the failure mode.
+
+        Every component would render correctly and every figure would be right, and the reader
+        would still meet the whole statistical apparatus on the first screen. Presence assertions
+        cannot see the difference, so this one is about position.
+        """
+        text = page_reference_text()
+        start, end = apparatus_span(text)
+
+        for marker in (
+            '<article class="card" aria-labelledby="family-summary">',
+            '<div class="pair-table-block">',
+            '<article class="card" aria-labelledby="pair-rank_3_vs_4',
+        ):
+            assert marker in text, marker
+            assert start < text.index(marker) < end, f"{marker} is not inside the apparatus"
+
+        # Nothing but the finding layer sits above the disclosure. Sliced from the body, because
+        # the inlined stylesheet names every one of these classes and would answer for them.
+        above = text[text.index('<main class="page">') : start]
+        assert above.count('<article class="card') == 1
+        assert 'class="card finding"' in above
+        assert "pair-table-block" not in above
+
+    def test_the_finding_layer_states_the_finding_and_nothing_technical(self) -> None:
+        """Tier 1 prohibitions, asserted against the fragment rather than the page.
+
+        A parenthetical p-value, a system identifier, the word Holm, a provenance line or a
+        deviation label in the finding layer breaks the contract's uncontested first reading. The
+        apparatus below carries all five legitimately, so the whole page cannot be the subject.
+        """
+        region = finding_region(page_reference_text())
+        prose = finding_prose(page_reference_text())
+        aggregates = json.loads(CORPUS_FILES["aggregates"].read_text(encoding="utf-8"))
+        cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
+
+        assert "holm" not in region.lower()
+        assert "p-value" not in region.lower()
+        assert re.search(r"\d\.\d", region) is None, "a decimal in the finding layer reads as a p"
+
+        for entry in aggregates["entries"]:
+            assert entry["system"] not in region, entry["system"]
+        for pair in cards["pairs"].values():
+            for side in ("system_a", "system_b"):
+                assert pair["comparison"][side] not in region
+
+        for banned in ("provenance", "revision", "fetched", "swe-bench", "deviation", "d4 "):
+            assert banned not in prose.lower(), banned
+        assert cards["family"]["provenance"]["pinned_revision"] not in region
+
+    def test_the_lead_sentence_is_verbatim(self) -> None:
+        """The binding sentence is the one line no later task may reword.
+
+        It is checked on the collapsed prose rather than the raw HTML so that the fixture may wrap
+        it across source lines, which is how every other fixture sets a paragraph.
+        """
+        assert LEAD_SENTENCE in finding_prose(page_reference_text())
+
+    def test_every_finding_layer_figure_is_the_committed_corpus_value(self) -> None:
+        """Spec 12.1's staleness guard, and it is total over the layer.
+
+        A fixture carrying real numbers goes stale silently: a rerun moves the corpus, the page
+        keeps quoting the old figures, and it still looks internally consistent. Checking the
+        figures we happened to think of would leave the next one unguarded, so the spans the
+        patterns capture are asserted to be exactly the digit runs in the layer.
+        """
+        prose = finding_prose(page_reference_text())
+
+        spans = []
+        for pattern, path in FINDING_FIGURES:
+            match = re.search(pattern, prose)
+            assert match is not None, f"no figure matched {pattern!r}"
+            assert int(match.group(1)) == corpus_value(path), (
+                f"{pattern!r} rendered {match.group(1)}, corpus {path} is {corpus_value(path)}"
+            )
+            spans.append(match.span(1))
+
+        assert sorted(spans) == [match.span() for match in re.finditer(r"\d+", prose)], (
+            "a numeral in the finding layer is not held to a source-qualified path"
+        )
+
+    def test_the_board_size_and_the_pair_family_size_are_not_swapped(self) -> None:
+        """One name, two numbers, and every swapped rendering is individually plausible.
+
+        `aggregates:family_size` is the 20 systems on the board; `results:primary.family_size` is
+        the 19 adjacent pairs among them. Swapped, the page reads "top-19" and "0 of 20" with no
+        type wrong and no figure absent from the corpus.
+        """
+        board = corpus_value("aggregates:family_size")
+        pairs = corpus_value("results:primary.family_size")
+        count = corpus_value("results:primary.headline.distinguishable_count")
+        assert board != pairs, "the collision is gone, so this control proves nothing"
+
+        prose = finding_prose(page_reference_text())
+        assert f"no neighboring top-{board} pair" in prose
+        assert f"{count} of {pairs} neighboring pairs" in prose
+        assert f"The top {board} creates {pairs} neighboring comparisons" in prose
+
+    def test_the_comparison_is_drawn_to_the_committed_figures(self) -> None:
+        """The contract asks the reader to see 7 fall short of 10, so the bars carry the claim.
+
+        Prose figures with a bar drawn to the wrong proportion is a copy defect the prose test
+        cannot see: the numerals would all be correct and the picture would be wrong.
+        """
+        region = finding_region(page_reference_text())
+        lead = corpus_value("results:primary.largest_observed_gap")
+        mark = corpus_value("results:primary.first_rejection_gap_floor")
+        assert lead < mark, "the lead cleared the mark, so this page's copy no longer holds"
+
+        assert f'style="flex: {lead};"' in region
+        assert f'style="flex: {mark - lead};"' in region
+        assert f'style="flex: {mark};"' in region
+
+    def test_the_family_card_is_the_committed_family_card(self) -> None:
+        """The apparatus quotes the engine, so it must quote it exactly.
+
+        Hand-edited card figures inside a collapsed disclosure are the least likely thing on the
+        page to be reread, and they are real values here rather than invented ones, so nothing
+        about them looks wrong when they drift.
+
+        `cards.json` is a validated intermediate and never an independent source of figures, so
+        equality with the renderer alone would anchor the card to the intermediate rather than to
+        the corpus. Each figure it renders is therefore also held to its path in `results.json`.
+        """
+        cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
+        rendered = textwrap.indent(render_card(cards["family"]), "    ")
+
+        assert rendered in page_reference_text()
+
+        finding = cards["family"]["family_finding"]
+        disclosure = finding["progressive_disclosure"]
+        for path, value in (
+            ("results:primary.separable_count", finding["headline"]["separable_count"]),
+            ("results:primary.family_size", finding["headline"]["family_size"]),
+            (
+                "results:primary.first_rejection_gap_floor",
+                finding["limit"]["first_rejection_gap_floor"],
+            ),
+            ("results:primary.largest_observed_gap", finding["limit"]["observed_extreme"]),
+            ("results:primary.resolved_count", finding["observed"]["resolved_count"]),
+            ("results:primary.first_critical", finding["criterion"]["threshold"]),
+            # Not the headline counts, which are equal today and mean something else: the
+            # secondary family is the pairs with a nonzero gap, and its floor is a gap.
+            ("results:secondary.non_tied_family.size", disclosure["secondary_family_size"]),
+            ("results:secondary.non_tied_family.gap_floor", disclosure["secondary_family_floor"]),
+        ):
+            assert value == corpus_value(path), f"{path} is {corpus_value(path)}, card says {value}"
+
+    def test_the_pair_card_is_the_committed_pair_card_under_its_human_label(self) -> None:
+        """Contract item 7: the first reading uses "Ranks 3 and 4", not `rank_3_vs_4`.
+
+        The renderer still emits the raw identifier and the conversion lands in a later task, so
+        the reference shows the approved target. This asserts the heading is the only difference,
+        which is what stops the relabelling from becoming a licence to edit the card's figures.
+        """
+        cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
+        rendered = render_card(cards["pairs"]["rank_3_vs_4"])
+        relabelled = rendered.replace("Pair verdict: rank_3_vs_4", "Pair verdict: Ranks 3 and 4")
+        assert relabelled != rendered, "the renderer no longer emits the raw identifier"
+
+        text = page_reference_text()
+        assert textwrap.indent(relabelled, "    ") in text
+
+        heading = re.search(r"<h2 class=\"eyebrow\" id=\"pair-[^\"]+\">(.*?)</h2>", text)
+        assert heading is not None
+        assert heading.group(1) == "Pair verdict: Ranks 3 and 4"
+
+        # Same reason as the family card: anchor the figures to the corpus, not the intermediate.
+        results = json.loads(CORPUS_FILES["results"].read_text(encoding="utf-8"))
+        row = next(pair for pair in results["pairs"] if pair["name"] == "rank_3_vs_4")
+        card = cards["pairs"]["rank_3_vs_4"]
+        assert card["ruler"]["split"] == [row["n10"], row["n01"]]
+        assert card["ruler"]["observed_disagreements"] == row["n_discordant"]
+        assert card["ruler"]["observed_net_edge"] == row["net_edge"]
+        assert (
+            card["ruler"]["required_net_edge_at_observed"] == row["required_net_edge_at_observed"]
+        )
+        assert card["test"]["p_value"] == row["p_value"]
+        assert card["test"]["adjusted_p_value"] == row["adjusted_p_value"]
+        assert card["mde"]["instances"] == row["mde"]["instances"]
+        assert card["mde"]["discordance_rate"] == row["discordance_rate"]
+        assert card["verdict"] == row["verdict"]
+
+    def test_the_three_identical_figures_keep_their_distinct_labels(self) -> None:
+        """Two quantities, three renderings, and on this data all three are the same characters.
+
+        The finding layer prints the observed count, the family banner prints `separable_count`
+        and the family card's observed line prints `resolved_count`. No value check can tell them
+        apart, so the labels are the whole guard.
+        """
+        text = page_reference_text()
+        figure = (
+            f"{corpus_value('results:primary.headline.distinguishable_count')} "
+            f"of {corpus_value('results:primary.family_size')}"
+        )
+        assert corpus_value("results:primary.separable_count") == corpus_value(
+            "results:primary.headline.distinguishable_count"
+        )
+        assert corpus_value("results:primary.resolved_count") == corpus_value(
+            "results:primary.headline.distinguishable_count"
+        )
+
+        assert text.count(figure) == 3
+        assert f"<b>{figure}</b> neighboring pairs showed a reliable difference" in text
+        assert f"<b>{figure}</b> adjacent pairs separable" in text
+        assert f"<dt>Resolved by the observed test</dt><dd>{figure}</dd>" in text
+
+    def test_the_reduced_table_says_it_is_reduced(self) -> None:
+        """Section 1.2: a reduced row count in a fixture must establish nothing about production.
+
+        The layout exploration that showed fewer rows is the reason this sentence is required on
+        the page's face rather than left to the spec.
+        """
+        text = page_reference_text()
+        start, end = apparatus_span(text)
+        body = text.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+        assert body.count("<tr>") == 4
+        apparatus = text[start:end]
+        assert "nineteen" in apparatus
+        assert "fixture convenience" in apparatus
+
+    def test_the_reference_inlines_the_current_stylesheet(self) -> None:
+        """The same drift `verdict_reference.html` already demonstrates, on the page that fixes
+        the hierarchy. That file inlines a copy taken before `card.css` gained its
+        `.card-rail.is-resolved` block and has been stale ever since. A stale copy here would
+        approve a layout the renderer never produces, which is worse than a stale component.
+        """
+        text = page_reference_text()
+        inlined = text.split("<style>\n", 1)[1].split("</style>", 1)[0]
+
+        assert inlined == CARD_STYLESHEET
+
+    def test_the_new_rules_introduce_no_literal_colour(self) -> None:
+        """Dark mode is driven entirely by tokens, so one literal silently breaks it.
+
+        The three `:root` blocks are the only place a colour value belongs. A hardcoded hex reads
+        correctly in whichever mode it was authored in and is invisible until someone opens the
+        page in the other one.
+        """
+        rules = CARD_STYLESHEET.split(':root[data-theme="light"]', 1)[1].split("}", 1)[1]
+        # Comments are prose about colour and are allowed to name one; declarations are not.
+        rules = re.sub(r"/\*.*?\*/", " ", rules, flags=re.DOTALL).lower()
+
+        assert re.search(r"#[0-9A-Fa-f]{3,8}\b", rules) is None
+        assert re.search(r"\b(rgba?|hsla?)\(", rules) is None
+        named = r"white|black|grey|gray|red|green|blue|orange|yellow|silver|teal|navy"
+        assert re.search(rf"(?<![-\w])({named})(?![-\w])", rules) is None
