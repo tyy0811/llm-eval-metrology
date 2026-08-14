@@ -818,7 +818,11 @@ NOT_SUFFICIENT_CLAUSE = (
 
 #: Spelled-out cardinals the page's prose uses. A digit-anchored guard cannot see a spelled number,
 #: so the word is derived from the corpus here rather than trusted.
-SPELLED_NUMBERS = {19: "nineteen", 20: "twenty", 21: "twenty one"}
+SPELLED_NUMBERS = {4: "four", 19: "nineteen", 20: "twenty", 21: "twenty one"}
+
+#: How many rows the reference's table shows. A fixture choice, not a corpus figure: the shipped
+#: document carries every adjacent pair, and section 1.2 turns on the page saying so.
+REDUCED_ROWS = 4
 
 
 def corpus_value(qualified_path: str) -> int:
@@ -850,10 +854,21 @@ def finding_region(text: str) -> str:
     return text[start:end]
 
 
+def collapse(fragment: str) -> str:
+    """One HTML fragment as the reader sees its words: no tags, no comments, single spaces.
+
+    Tags become a space rather than nothing, so that two adjacent inline elements do not run their
+    words together. That leaves a space before the punctuation that follows an inline element, as
+    in `<code>table_reference.html</code>.`, which the reader never sees, so it is closed up again.
+    """
+    stripped = re.sub(r"<!--.*?-->", " ", fragment, flags=re.DOTALL)
+    words = " ".join(re.sub(r"<[^>]+>", " ", stripped).split())
+    return re.sub(r"\s+([.,;:])", r"\1", words)
+
+
 def finding_prose(text: str) -> str:
     """The finding layer with tags removed and whitespace collapsed, as a reader sees it."""
-    stripped = re.sub(r"<!--.*?-->", " ", finding_region(text), flags=re.DOTALL)
-    return " ".join(re.sub(r"<[^>]+>", " ", stripped).split())
+    return collapse(finding_region(text))
 
 
 def family_card_region(text: str) -> str:
@@ -877,10 +892,36 @@ def non_claims_items(text: str) -> list[str]:
     """
     region = finding_region(text)
     listing = region.split('<ul class="non-claims">', 1)[1].split("</ul>", 1)[0]
+    return [collapse(item.split("</li>", 1)[0]) for item in listing.split("<li>")[1:]]
+
+
+def finding_readings(text: str) -> list[str]:
+    """The finding layer's prose paragraphs, in order, as collapsed text.
+
+    A substring pin guards its own characters and leaves its neighbourhood open: a hedge prepended
+    to a pinned sentence, or a reversal appended after a pinned clause, changes what the paragraph
+    means while the pinned span survives untouched. Returning the whole paragraph is what lets the
+    assertion be `==` rather than `in`.
+    """
     return [
-        " ".join(re.sub(r"<[^>]+>", " ", item.split("</li>", 1)[0]).split())
-        for item in listing.split("<li>")[1:]
+        collapse(body)
+        for body in re.findall(
+            r'<p class="reading">(.*?)</p>', finding_region(text), flags=re.DOTALL
+        )
     ]
+
+
+def apparatus_note(text: str) -> str:
+    """The reference's own note above the table, as collapsed text.
+
+    It is fixture furniture rather than renderer output, so the family card's fragment-equality
+    test does not reach it, and it is the only place the page states that the shipped table
+    carries every adjacent pair. Section 1.2 rests on that sentence.
+    """
+    start, end = apparatus_span(text)
+    notes = re.findall(r'<p class="note">(.*?)</p>', text[start:end], flags=re.DOTALL)
+    assert len(notes) == 1, f"expected one note in the apparatus, found {len(notes)}"
+    return collapse(notes[0])
 
 
 def lead_scale_rows(text: str) -> list[tuple[str, str]]:
@@ -1089,6 +1130,39 @@ class TestPageReference:
         prose = finding_prose(page_reference_text())
 
         assert NOT_SUFFICIENT_CLAUSE in prose, "the analogy now overclaims what the mark settles"
+
+    def test_the_analogy_and_the_task_level_note_are_verbatim(self) -> None:
+        """A sentence pin cannot see the sentence next to it, which is the same defect one level
+        out from the one that put the false superlative on this page.
+
+        Two edits pass every substring pin. Prepend "In nearly all cases," to the scoped
+        superlative and the pinned span is untouched, no numeral moves and the totality walk still
+        balances, while the sentence now implies exceptions to a claim that holds without any.
+        Append "Though in practice it usually would have." after the necessary-not-sufficient
+        clause and the clause survives verbatim while the sentence after it asserts the opposite:
+        that reaching the mark would have settled the comparison, which is false about the
+        procedure and is exactly what spec 10.2 forbids the analogy to imply.
+
+        So the unit is the paragraph, not the sentence, and the assertion is `==` on its whole
+        text. The figures are built from the corpus rather than typed, so this pin does not become
+        a second stale copy of them.
+        """
+        board = corpus_value("aggregates:family_size")
+        lead = corpus_value("results:primary.largest_observed_gap")
+        mark = corpus_value("results:primary.first_rejection_gap_floor")
+
+        assert finding_readings(page_reference_text()) == [
+            "It works like a qualifying mark. Before a difference between two neighboring systems "
+            f"could count as reliable, that pair needed a lead of at least {mark} tasks. No "
+            f"neighboring pair anywhere in the top {board} led by more than {lead}. None reached "
+            "the mark, so none could qualify. Reaching the mark would not have settled a "
+            "comparison on its own; it is the point at which the question becomes answerable at "
+            "all.",
+            "Task-by-task results add detail but cannot change this. A pair's lead sets a ceiling "
+            f"on how strong its evidence can get, and a lead of {lead} stays under the mark even "
+            "if every task the two systems disagreed on had gone the same way. The headline "
+            "follows from the published totals alone.",
+        ]
 
     def test_both_non_claims_are_present_in_order(self) -> None:
         """Half of contract item 5 could be deleted with the whole suite green.
@@ -1336,24 +1410,35 @@ class TestPageReference:
         digit-anchored guard cannot see a spelled number: move the pair family size and every
         numeral test would fail while "nineteen" sat there stale. So the word is derived from the
         corpus rather than hardcoded here.
+
+        The note itself is pinned whole rather than by the substrings it happens to contain. It is
+        fixture furniture, so the family card's fragment-equality test does not reach it, and both
+        of its load-bearing sentences could be deleted with "nineteen" and "fixture convenience"
+        left standing elsewhere in the paragraph. Those two sentences are the ones that tell a
+        reader the reduction is a fixture convenience rather than the shipped row count, which is
+        what section 1.2 guards against being read as a post-hoc selection.
         """
         text = page_reference_text()
-        start, end = apparatus_span(text)
         body = text.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
         family_size = corpus_value("results:primary.family_size")
-        assert family_size in SPELLED_NUMBERS, f"no spelled form registered for {family_size}"
-        spelled = SPELLED_NUMBERS[family_size]
+        for spelled_out in (family_size, REDUCED_ROWS):
+            assert spelled_out in SPELLED_NUMBERS, f"no spelled form registered for {spelled_out}"
+        shipped, shown = SPELLED_NUMBERS[family_size], SPELLED_NUMBERS[REDUCED_ROWS]
 
-        assert body.count("<tr>") == 4
-        apparatus = text[start:end]
-        assert spelled in apparatus
-        assert "fixture convenience" in apparatus
+        assert body.count("<tr>") == REDUCED_ROWS
+        assert apparatus_note(text) == (
+            f"The shipped document carries all {shipped} adjacent pairs in this table, and both "
+            f"selected pair cards. The {shown} rows below are a fixture convenience and establish "
+            "nothing about which pairs ship: the table is built from every adjacent pair, and the "
+            f"pair cards come from the registered selection rule. These {shown} rows and their "
+            "cell figures are synthetic, as approved in table_reference.html."
+        )
 
         stamp = " ".join(
             text.split('<div class="stamp-illustrative">', 1)[1].split("</div>", 1)[0].split()
         )
-        assert spelled in stamp
+        assert shipped in stamp
 
     def test_the_reference_inlines_the_current_stylesheet(self) -> None:
         """The same drift `verdict_reference.html` already demonstrates, on the page that fixes
