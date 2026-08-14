@@ -789,8 +789,8 @@ FINDING_FIGURES = (
     (r"largest lead (\d+) tasks", "results:primary.largest_observed_gap"),
     (r"minimum opening lead (\d+) tasks", "results:primary.first_rejection_gap_floor"),
     (r"needed a lead of at least (\d+) tasks", "results:primary.first_rejection_gap_floor"),
-    (r"anywhere in the top (\d+) was", "aggregates:family_size"),
-    (r"in the top \d+ was (\d+)\.", "results:primary.largest_observed_gap"),
+    (r"anywhere in the top (\d+) led by more than", "aggregates:family_size"),
+    (r"led by more than (\d+)\.", "results:primary.largest_observed_gap"),
     (r"a lead of (\d+) stays under the mark", "results:primary.largest_observed_gap"),
     (r"how rank (\d+) compares", "literal:1"),
     (r"compares with rank (\d+)\.", "aggregates:family_size"),
@@ -1013,8 +1013,14 @@ class TestPageReference:
 
         Prose figures with a bar drawn to the wrong proportion is a copy defect the prose test
         cannot see: the numerals would all be correct and the picture would be wrong.
+
+        The reverse is the same defect mirrored, and it is the one that actually happened: the
+        analogy's sentence about the largest lead was wrong while every bar was right. So the
+        three places the observed lead appears, the bar, the legend and the analogy prose, are
+        asserted to read the one source rather than each being separately plausible.
         """
         region = finding_region(page_reference_text())
+        prose = finding_prose(page_reference_text())
         lead = corpus_value("results:primary.largest_observed_gap")
         mark = corpus_value("results:primary.first_rejection_gap_floor")
         assert lead < mark, "the lead cleared the mark, so this page's copy no longer holds"
@@ -1022,6 +1028,11 @@ class TestPageReference:
         assert f'style="flex: {lead};"' in region
         assert f'style="flex: {mark - lead};"' in region
         assert f'style="flex: {mark};"' in region
+
+        for pattern in (r"largest lead (\d+) tasks", r"led by more than (\d+)\."):
+            match = re.search(pattern, prose)
+            assert match is not None, f"the observed lead is not stated by {pattern!r}"
+            assert int(match.group(1)) == lead, f"{pattern!r} disagrees with the bar"
 
     def test_the_family_card_is_the_committed_family_card(self) -> None:
         """The apparatus quotes the engine, so it must quote it exactly.
