@@ -563,3 +563,37 @@ class TestTraversalAndFailureHandling:
             fetch.main([])
 
         assert survivor.read_text(encoding="utf-8") == '{"kept": true}'
+
+
+class TestFetchDate:
+    """T3.4 spec section 2: fetch_date needs one committed source. It was a literal in
+    run.py and absent from the manifest, so validating a card against a second literal
+    in report.py would have created the duplicate the check exists to catch.
+
+    Offline migration on purpose: a fetch run today cannot establish the historical
+    date, only that the pinned bytes are still reachable, so re-fetching would risk the
+    committed digests for no evidence.
+    """
+
+    def manifest(self) -> dict:
+        path = (
+            Path(__file__).resolve().parent.parent
+            / "experiments/swebench/manifests/upstream_digests.json"
+        )
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_the_manifest_carries_the_fetch_date(self) -> None:
+        assert self.manifest()["fetch_date"] == "2026-07-29"
+
+    def test_bootstrap_requires_an_explicit_fetch_date(self) -> None:
+        """--bootstrap must never invent a date."""
+        with pytest.raises(SystemExit):
+            fetch.main(["--bootstrap"])
+
+    def test_fetch_date_must_be_canonical(self) -> None:
+        from metrology.reporting import require_canonical_date
+
+        for bad in ("2026-13-01", "2026-7-29", "20260729", "not-a-date", ""):
+            with pytest.raises(ValueError, match="canonical"):
+                require_canonical_date(bad, "fetch_date")
+        assert require_canonical_date("2026-07-29", "fetch_date") == "2026-07-29"

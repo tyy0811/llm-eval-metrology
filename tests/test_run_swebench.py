@@ -442,6 +442,7 @@ class TestMainWiring:
                         name: hashlib.sha256((derived / name).read_bytes()).hexdigest()
                         for name in ("labels.csv", "aggregates.json", "unevaluated.json")
                     },
+                    "fetch_date": "2026-07-29",
                 },
                 indent=2,
             ),
@@ -673,3 +674,15 @@ class TestHeadline:
             "real_test_not_distinguishable_count": 10,
             "tie_forced_not_distinguishable_count": 9,
         }
+
+
+class TestFetchDateSource:
+    """The literal must not come back: run.py reads the date from the manifest now."""
+
+    def test_run_defines_no_canonical_fetch_date_literal(self) -> None:
+        assert not hasattr(run, "CANONICAL_FETCH_DATE")
+        source = (Path(__file__).resolve().parent.parent / "experiments/swebench/run.py").read_text(
+            encoding="utf-8"
+        )
+        assert "CANONICAL_FETCH_DATE" not in source
+        assert "2026-07-29" not in source

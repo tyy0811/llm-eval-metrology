@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date
 
 from .multiplicity import holm
 from .paired import (
@@ -91,6 +92,24 @@ def _require_level(value: float, name: str) -> float:
     if not math.isfinite(value) or not 0.0 < value <= 1.0:
         raise ValueError(f"{name} must be in (0, 1], got {value!r}")
     return float(value)
+
+
+def require_canonical_date(value: object, name: str) -> str:
+    """A real calendar date in canonical YYYY-MM-DD form.
+
+    Round-tripping through date.fromisoformat is what rejects both a nonexistent
+    date (2026-13-01) and a non-canonical spelling of a real one (2026-7-29), which
+    a regex alone would let through.
+    """
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string, got {value!r}")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a canonical YYYY-MM-DD date, got {value!r}") from exc
+    if parsed.isoformat() != value:
+        raise ValueError(f"{name} must be a canonical YYYY-MM-DD date, got {value!r}")
+    return value
 
 
 @dataclass(frozen=True)

@@ -46,6 +46,7 @@ from metrology.reporting import (  # noqa: E402
     build_family_report,
     family_card_json,
     pair_card_json,
+    require_canonical_date,
     validate_card,
 )
 from metrology.schema import load_long_csv  # noqa: E402
@@ -74,11 +75,6 @@ ARTIFACT_SOURCE = "SWE-bench/experiments"
 # names the board. The observed counts on that card do read per-instance data, which is why the
 # card also names the artifact source as its secondary.
 BOARD_SOURCE = "SWE-bench/swe-bench.github.io"
-
-# D0.9 forbids ambient state in result files, and D1.7 requires a fetch date on every card.
-# A committed constant satisfies both: it is a real date and it is an input, not something the
-# run observes. It changes only when the pinned revisions above change.
-CANONICAL_FETCH_DATE = "2026-07-29"
 
 
 class RunFailure(RuntimeError):
@@ -357,6 +353,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("verifying derived inputs against the committed manifest")
     manifest = verify_inputs()
+    fetch_date = require_canonical_date(manifest["fetch_date"], "manifest fetch_date")
     print("  all derived inputs match")
 
     aggregates = json.loads((DERIVED / "aggregates.json").read_text(encoding="utf-8"))
@@ -372,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
     provenance = Provenance(
         source=ARTIFACT_SOURCE,
         pinned_revision=artifact_revision,
-        fetch_date=CANONICAL_FETCH_DATE,
+        fetch_date=fetch_date,
         deviations=("D4 harness comparability",),
     )
     # The family headline comes from the board, not the artifacts. D4 stays on the card because
@@ -381,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     family_provenance = Provenance(
         source=BOARD_SOURCE,
         pinned_revision=manifest["board"]["commit"],
-        fetch_date=CANONICAL_FETCH_DATE,
+        fetch_date=fetch_date,
         deviations=("D4 harness comparability",),
         secondary_source=ARTIFACT_SOURCE,
         secondary_revision=artifact_revision,

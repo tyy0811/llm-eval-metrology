@@ -506,7 +506,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="write the manifest instead of checking against it; required on first run",
     )
+    parser.add_argument(
+        "--fetch-date",
+        help="canonical YYYY-MM-DD date recorded in the manifest; required with --bootstrap",
+    )
     args = parser.parse_args(argv)
+
+    if args.bootstrap and not args.fetch_date:
+        parser.error("--bootstrap requires --fetch-date; a manifest must not invent its own date")
 
     if not args.bootstrap and not MANIFEST_PATH.exists():
         raise GateFailure(
@@ -599,6 +606,11 @@ def main(argv: list[str] | None = None) -> int:
             "aggregates.json": sha256(aggregates.encode("utf-8")),
             "rows": len(rows),
         },
+        "fetch_date": (
+            args.fetch_date
+            if args.bootstrap
+            else json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["fetch_date"]
+        ),
     }
 
     if args.bootstrap:
