@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import textwrap
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -860,6 +861,12 @@ def collapse(fragment: str) -> str:
     Tags become a space rather than nothing, so that two adjacent inline elements do not run their
     words together. That leaves a space before the punctuation that follows an inline element, as
     in `<code>table_reference.html</code>.`, which the reader never sees, so it is closed up again.
+
+    Two limits, neither reachable by the copy this guards. The tag pattern is a regex, not a
+    parser, so a literal `<` or `>` in prose would be misread as a tag: none exists, and none can
+    while the copy carries no comparison operators. And the punctuation closeup would silently
+    normalize an authored `word .` typo, which is a typographic defect rather than a change of
+    meaning, which is why the substitution is limited to whitespace before `.,;:`.
     """
     stripped = re.sub(r"<!--.*?-->", " ", fragment, flags=re.DOTALL)
     words = " ".join(re.sub(r"<[^>]+>", " ", stripped).split())
@@ -893,6 +900,82 @@ def non_claims_items(text: str) -> list[str]:
     region = finding_region(text)
     listing = region.split('<ul class="non-claims">', 1)[1].split("</ul>", 1)[0]
     return [collapse(item.split("</li>", 1)[0]) for item in listing.split("<li>")[1:]]
+
+
+#: Elements that hold reader-facing prose in Tier 1. Text outside one of these is text no declared
+#: literal can claim, which is the condition `tier_1_text_units` exists to detect.
+TEXT_UNITS = frozenset({"p", "li"})
+
+#: Void elements, which never close. `<hr class="card-rail">` is one, and treating it as an open
+#: element would unbalance the parse stack and swallow everything after it.
+VOID_ELEMENTS = frozenset({"hr", "br", "img", "input", "meta", "link", "source", "wbr"})
+
+#: Attributes that put words in front of a reader without putting them in the document text.
+READER_ATTRIBUTES = frozenset({"aria-label", "alt", "title"})
+
+
+class Tier1Reader(HTMLParser):
+    """Collects every reader-facing text unit in a fragment, and any text no unit claims.
+
+    A real parse rather than a selector list, because a selector list is an enumeration and this
+    exists to stop enumerating. Text in an element nobody thought to name lands in `unclaimed`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+        self.open_units: list[int] = []
+        self.units: list[tuple[str, list[str]]] = []
+        self.unclaimed: list[str] = []
+        self.reader_attributes: list[tuple[str, str, str]] = []
+
+    def _record_attributes(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        for name, value in attrs:
+            if name in READER_ATTRIBUTES:
+                self.reader_attributes.append((tag, name, value or ""))
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._record_attributes(tag, attrs)
+        if tag in VOID_ELEMENTS:
+            return
+        self.stack.append(tag)
+        if tag in TEXT_UNITS:
+            self.units.append((tag, []))
+            self.open_units.append(len(self.units) - 1)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._record_attributes(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in VOID_ELEMENTS:
+            return
+        while self.stack:
+            popped = self.stack.pop()
+            if popped in TEXT_UNITS and self.open_units:
+                self.open_units.pop()
+            if popped == tag:
+                return
+
+    def handle_data(self, data: str) -> None:
+        if not data.strip():
+            return
+        if self.open_units:
+            self.units[self.open_units[-1]][1].append(data)
+        else:
+            self.unclaimed.append(" ".join(data.split()))
+
+
+def parse_text_units(fragment: str) -> Tier1Reader:
+    """Parse any fragment into its reader-facing units."""
+    parser = Tier1Reader()
+    parser.feed(re.sub(r"<!--.*?-->", " ", fragment, flags=re.DOTALL))
+    parser.close()
+    return parser
+
+
+def tier_1_text_units(text: str) -> Tier1Reader:
+    """Parse the finding layer into its reader-facing units."""
+    return parse_text_units(finding_region(text))
 
 
 def finding_readings(text: str) -> list[str]:
@@ -1130,6 +1213,112 @@ class TestPageReference:
         prose = finding_prose(page_reference_text())
 
         assert NOT_SUFFICIENT_CLAUSE in prose, "the analogy now overclaims what the mark settles"
+
+    def test_every_word_a_reader_sees_in_tier_1_is_declared(self) -> None:
+        """Total over the first reading: every word a reader sees in Tier 1 is claimed by exactly
+        one declared literal, and nothing else is there.
+
+        Three consecutive rounds of enumerated pins each missed a different unpinned span. Round 1
+        pinned two sentences and left the text beside them open, so a prepended hedge and an
+        appended reversal both passed. Round 2 pinned two paragraphs and left the lead sentence
+        out because a substring check made it look guarded, so appending "Though a difference
+        might still exist." to the most-read line in the document reversed its headline claim with
+        the whole class green. Enumeration is the defect; each round it protects what was named
+        last time and leaves whatever was not.
+
+        So this asserts the shape rather than the members. The layer is parsed, not matched:
+        every `p` and every `li` is extracted in document order with its text, the list is compared
+        with `==`, and any text found outside a text unit is a violation in itself. An added,
+        deleted, reordered or edited paragraph all fail, and so does prose smuggled into an element
+        nobody thought to name, or into an `aria-label` where a screen reader would still read it.
+
+        The substring pins below stay. They cost nothing and each names a specific regression;
+        this sits above them rather than replacing them.
+        """
+        board = corpus_value("aggregates:family_size")
+        pairs = corpus_value("results:primary.family_size")
+        count = corpus_value("results:primary.headline.distinguishable_count")
+        items = corpus_value("aggregates:n_items")
+        lead = corpus_value("results:primary.largest_observed_gap")
+        mark = corpus_value("results:primary.first_rejection_gap_floor")
+
+        reader = tier_1_text_units(page_reference_text())
+        units = [(tag, collapse(" ".join(chunks))) for tag, chunks in reader.units]
+
+        assert units == [
+            (
+                "p",
+                "Using the statistical test chosen in advance, no neighboring "
+                f"top-{board} pair showed a reliable difference.",
+            ),
+            ("p", f"{count} of {pairs} neighboring pairs showed a reliable difference"),
+            (
+                "p",
+                f"The top {board} creates {pairs} neighboring comparisons, each measured on "
+                f"{items} tasks.",
+            ),
+            ("p", f"largest lead {lead} tasks"),
+            ("p", f"minimum opening lead {mark} tasks"),
+            (
+                "p",
+                "It works like a qualifying mark. Before a difference between two neighboring "
+                f"systems could count as reliable, that pair needed a lead of at least {mark} "
+                f"tasks. No neighboring pair anywhere in the top {board} led by more than {lead}. "
+                "None reached the mark, so none could qualify. Reaching the mark would not have "
+                "settled a comparison on its own; it is the point at which the question becomes "
+                "answerable at all.",
+            ),
+            (
+                "p",
+                "Task-by-task results add detail but cannot change this. A pair's lead sets a "
+                f"ceiling on how strong its evidence can get, and a lead of {lead} stays under "
+                "the mark even if every task the two systems disagreed on had gone the same way. "
+                "The headline follows from the published totals alone.",
+            ),
+            (
+                "li",
+                "This does not show the systems are equivalent. Not finding a difference is not "
+                "the same as showing there is none, and this experiment registered no equivalence "
+                "test.",
+            ),
+            (
+                "li",
+                "This does not cover systems that are not neighbors. Only neighboring pairs were "
+                f"compared, so it says nothing about how rank 1 compares with rank {board}.",
+            ),
+        ]
+
+        assert reader.unclaimed == [], "Tier 1 text outside any declared unit"
+        assert reader.reader_attributes == [], "Tier 1 words a declared literal does not cover"
+
+    def test_the_tier_1_reader_detects_what_it_claims_to_detect(self) -> None:
+        """Two of the assertions above compare against an empty list, and an empty list is what a
+        detector that never fires also produces.
+
+        So the detector is run against a fragment built to contain exactly what it is supposed to
+        catch: text loose in a section, text in an element nobody named, and words in an
+        `aria-label` that a screen reader would read out. Without this, the totality claim rests on
+        collections that might simply never be populated.
+        """
+        reader = parse_text_units(
+            '<article class="card finding">\n'
+            '  <hr class="card-rail">\n'
+            "  <section>\n"
+            '    <p class="finding-lead">declared</p>\n'
+            "    loose in a section\n"
+            "    <blockquote>inside an element nobody named</blockquote>\n"
+            '    <div aria-label="read aloud, printed nowhere"></div>\n'
+            '    <ul class="non-claims"><li>a limit</li></ul>\n'
+            "  </section>\n"
+            "</article>"
+        )
+
+        assert [(tag, collapse(" ".join(chunks))) for tag, chunks in reader.units] == [
+            ("p", "declared"),
+            ("li", "a limit"),
+        ]
+        assert reader.unclaimed == ["loose in a section", "inside an element nobody named"]
+        assert reader.reader_attributes == [("div", "aria-label", "read aloud, printed nowhere")]
 
     def test_the_analogy_and_the_task_level_note_are_verbatim(self) -> None:
         """A sentence pin cannot see the sentence next to it, which is the same defect one level
