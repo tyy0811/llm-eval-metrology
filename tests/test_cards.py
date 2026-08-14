@@ -855,6 +855,55 @@ PAIR_TABLE_NOTE = (
 #: the declared rows so the spelled word, the `<tr>` count and the cells cannot disagree.
 REDUCED_ROWS = len(REDUCED_TABLE_ROWS)
 
+#: The page's `<title>`, which a reader meets in the tab strip and in a bookmark before meeting any
+#: of the document. It sits in `<head>`, so no walk bounded by `<body>` reaches it.
+PAGE_TITLE = "Card set page reference"
+
+#: The `h1`. It carries the same words as the title today and is pinned separately, because they are
+#: two regions: the tab strip and the largest type on the page.
+PAGE_HEADING = "Card set page reference"
+
+#: The stamp's headline, which is the whole of what the page says about its own status in the type
+#: size a skimming reader reads.
+STAMP_HEADLINE = "Layout and copy reference. Not a published result."
+
+#: The two-line note under the `h1`.
+INTRO_NOTE = (
+    "The whole document, in the order a reader meets it. Notes for review are at the foot of the "
+    "page."
+)
+
+#: The heading over the review commentary at the foot of the page.
+REVIEW_NOTES_HEADING = "Notes for review"
+
+#: The review commentary itself. Pinned flat, with nothing derived: every numeral in it is a fact
+#: about the page rather than a corpus figure, so there is nothing here that can go stale when the
+#: corpus moves. That is not true of the stamp, which is why `stamp_body_literal` exists.
+REVIEW_NOTES = (
+    "The question this page exists to answer: does a reader who sees only the first screen come "
+    "away with a correct, complete and non-misleading understanding of the finding? Everything "
+    "above the disclosure is that first reading. It states no significance value, names no system, "
+    "uses the correction's name nowhere, shows no provenance and carries no deviation label, and a "
+    "test asserts each of those against that fragment rather than against the page. The disclosure "
+    "is closed by default and live, which is what a first-time reader meets. A reference that "
+    "shipped it open would approve a hierarchy nobody encounters, and would be the same failure as "
+    "approving a renderer's own output. The comparison under the headline is two measures on one "
+    "scale whose full length is the mark, so the observed lead is seen to stop short of it rather "
+    "than described as doing so. It reuses the discordance strip rather than the pair card's "
+    "ruler, and the reason is a measurement: the ruler's marker labels are short enough to sit "
+    'either side of one track and "minimum opening lead" is not, so at a 320px viewport two '
+    "centred labels would overlap. The finding layer carries no review annotations, unlike the "
+    "sibling fixtures. It is the copy under approval, and tags interleaved with it would change "
+    "the reading being judged. The annotations on the table are the same device as in "
+    "table_reference.html, for review only, and the renderer does not emit them. The pair card is "
+    'headed "Ranks 3 and 4". The renderer emits "rank_3_vs_4" today; the conversion is built in a '
+    "later task and the approved target is what is shown here. The document renders the same "
+    "figure three times, for two different quantities: the observed count in the finding layer, "
+    "the separable count on the family banner, and the resolved count on the family card's "
+    "observed line. The characters are identical in all three, so only their labels tell them "
+    "apart, and collapsing the apparatus is what keeps the first reading down to one of them."
+)
+
 
 def corpus_value(qualified_path: str) -> int:
     """Resolve a source-qualified path such as `results:primary.family_size` against the corpus."""
@@ -940,6 +989,14 @@ TEXT_UNITS = frozenset({"p", "li"})
 #: prose. A `th` and a `td` are read aloud one at a time and are as much reader-facing text as a
 #: paragraph is; the summary is the only words a reader sees before deciding to open the half.
 APPARATUS_TEXT_UNITS = TEXT_UNITS | frozenset({"summary", "caption", "th", "td"})
+
+#: The same again, for the page furniture around those two regions: the stamp is a `strong` and a
+#: `span`, the page has an `h1` and the review notes an `h2`.
+#:
+#: A unit set is not an enumeration of what is guarded. It names what a declared literal is allowed
+#: to claim; text in any element outside it lands in `unclaimed` and fails on its own. Adding a unit
+#: type therefore never widens what passes, which is what separates this from a list of regions.
+PAGE_TEXT_UNITS = TEXT_UNITS | frozenset({"h1", "h2", "strong", "span"})
 
 #: Void elements, which never close. `<hr class="card-rail">` is one, and treating it as an open
 #: element would unbalance the parse stack and swallow everything after it.
@@ -1185,6 +1242,72 @@ def apparatus_note_literal() -> str:
         f"pair cards come from the registered selection rule. These {shown} rows and their cell "
         "figures are synthetic, as approved in table_reference.html."
     )
+
+
+def stamp_body_literal() -> str:
+    """The stamp's second block, as it must read.
+
+    The stamp is the only page furniture that quotes the corpus, and it quotes it in words: the
+    reduced row count and the pair family size are both spelled out, where no digit-anchored guard
+    can see them. Both are derived here for the same reason `apparatus_note_literal` derives them,
+    so that moving the family size fails this pin rather than leaving "nineteen" sitting stale.
+    """
+    family_size = corpus_value("results:primary.family_size")
+    for spelled_out in (family_size, REDUCED_ROWS):
+        assert spelled_out in SPELLED_NUMBERS, f"no spelled form registered for {spelled_out}"
+    shipped, shown = SPELLED_NUMBERS[family_size], SPELLED_NUMBERS[REDUCED_ROWS]
+    return (
+        "The finding layer and both cards carry the committed Experiment 1 figures rather than "
+        "invented ones, because public copy cannot be judged against quantities that are not "
+        "real, and a test holds each of them to the corpus at its declared source path. The table "
+        f"is the exception: its {shown} rows stand in for the {shipped} the shipped document "
+        "carries, which is a fixture convenience that settles nothing about which pairs ship, and "
+        "its cell figures stay synthetic."
+    )
+
+
+def page_body(text: str) -> str:
+    """The document's `<body>`, whole.
+
+    The bound is the body rather than the file because the inlined `<style>` block is not prose and
+    `HTMLParser` hands its whole content back as text. That block is held byte-equal to `card.css`
+    by `test_the_reference_inlines_the_current_stylesheet`, and `<title>` is the only other
+    reader-facing string in `<head>`; it is pinned by name rather than left to this bound.
+    """
+    start = text.index("<body>")
+    return text[start : text.index("</body>") + len("</body>")]
+
+
+def body_outside_the_total_regions(text: str) -> str:
+    """The body with the finding layer and the technical apparatus cut out.
+
+    Both are already total: every reader-facing span in each is claimed by exactly one declared
+    literal, so re-declaring them here would duplicate two long lists and let the page be total
+    against one wording while its own region held another. The same excision pattern as
+    `apparatus_outside_the_rendered_cards`, one level up.
+
+    The excision is only sound while each region appears verbatim exactly once, so that is asserted
+    rather than assumed: a silent no-op replace would leave the region's text in the residue and
+    turn a precise failure into a confusing one.
+    """
+    body = page_body(text)
+    apparatus_start, apparatus_end = apparatus_span(text)
+    regions = (
+        ("finding layer", finding_region(text)),
+        ("technical apparatus", text[apparatus_start:apparatus_end]),
+    )
+    for name, fragment in regions:
+        assert body.count(fragment) == 1, (
+            f"the {name} does not appear in the body exactly once, so its own totality assertion "
+            "does not cover it and cutting it out here would hide an edit"
+        )
+        body = body.replace(fragment, "\n")
+    return body
+
+
+def page_text_units(text: str) -> DeclaredTextReader:
+    """Parse the page furniture, minus the two already-total regions, into its reader-facing units."""
+    return parse_text_units(body_outside_the_total_regions(text), PAGE_TEXT_UNITS)
 
 
 class TestPageReference:
@@ -1583,6 +1706,100 @@ class TestPageReference:
             ("div", "style", "display: none"),
         ]
 
+    def test_every_word_a_reader_sees_on_the_page_is_declared(self) -> None:
+        """Total over the whole document: every reader-facing span in `<body>` that one of the two
+        region assertions does not already own is claimed by exactly one declared literal, plus the
+        `<title>` outside it, and nothing else is there.
+
+        **The defect moves to whatever was not enumerated.** That is the one finding this file has
+        produced, six times, and every previous round answered it by naming one more region. Round 1
+        pinned two sentences, so the text beside them took the defect. Round 2 pinned two
+        paragraphs, so the lead sentence took it. Round 3 made Tier 1 total, so the apparatus took
+        it. Round 4 made the apparatus total, so the ordering seam between the two took it. Round 5
+        closed the seam, and it moved to the four regions nobody had ever named: rewriting the `h1`
+        to `Several top-20 pairs are separable after all` passed 107 of 107, and so did a fabricated
+        reproduction claim under the stamp, a fabricated reversal in the notes at the foot, and a
+        rewritten `<title>`.
+
+        A sixth region check would relocate it a seventh time. So the subject here is the body, and
+        the two regions that are already total are cut out rather than re-declared. What is left is
+        the page furniture, and it is compared as one ordered list. Anything added, deleted,
+        reordered or edited fails, and so does text in an element nobody thought to name, because
+        the unit set decides what a literal may claim and not what is inspected.
+
+        The `<title>` is named rather than walked. It lives in `<head>`, which this walk does not
+        enter, because the inlined `<style>` block is not prose and `HTMLParser` returns the whole
+        stylesheet as text. Naming it is the point: the `h1` survived five rounds precisely by
+        sitting outside every region anyone had drawn, and a bound that quietly excluded the title
+        would be the same mistake one element up.
+
+        `report.py` emits none of this furniture, which is why the defect was reported rather than
+        blocking. It is not why it is fixed. A false headline on an approved reference misleads
+        every reader of the reference, and this chain has never used "cannot ship" as its bar:
+        round 2's finding was the same shape on prose that was equally fixture-only at the time.
+        """
+        text = page_reference_text()
+        reader = page_text_units(text)
+
+        assert declared_units(reader) == [
+            ("strong", STAMP_HEADLINE),
+            ("span", stamp_body_literal()),
+            ("h1", PAGE_HEADING),
+            ("p", INTRO_NOTE),
+            ("h2", REVIEW_NOTES_HEADING),
+            ("p", REVIEW_NOTES),
+        ]
+
+        assert reader.unclaimed == [], "page text outside any declared unit"
+        assert reader.reader_attributes == [], "page words a declared literal does not cover"
+
+        titles = re.findall(r"<title\b[^>]*>(.*?)</title>", text, re.DOTALL)
+        assert [collapse(title) for title in titles] == [PAGE_TITLE]
+
+    def test_the_page_reader_detects_what_it_claims_to_detect(self) -> None:
+        """The page totality rests on two comparisons against an empty list, and an empty list is
+        also what a detector wired to nothing produces.
+
+        Neither existing detector test covers this configuration. The unit set is wider than Tier
+        1's and different from the apparatus's, so a `strong`, a `span`, an `h1` and an `h2` have
+        to be shown landing in `units` rather than in `unclaimed`, and loose text in the stamp and
+        text in an element nobody named have to be shown landing in `unclaimed` rather than being
+        quietly dropped. The `hidden` div is here because `presentation_attributes` is asserted
+        empty for this region too, one test down.
+        """
+        reader = parse_text_units(
+            "<body>\n"
+            '  <div class="stamp-illustrative">\n'
+            "    <strong>a stamp headline</strong>\n"
+            "    <span>a stamp body</span>\n"
+            "    loose in the stamp\n"
+            "  </div>\n"
+            "  <div>\n"
+            "    <h1>a page heading</h1>\n"
+            "    <h2>a heading at the foot</h2>\n"
+            '    <p title="read on hover, declared nowhere">a note</p>\n'
+            "    <blockquote>inside an element nobody named</blockquote>\n"
+            "  </div>\n"
+            "  <div hidden>effaced the same way</div>\n"
+            "</body>",
+            PAGE_TEXT_UNITS,
+        )
+
+        assert declared_units(reader) == [
+            ("strong", "a stamp headline"),
+            ("span", "a stamp body"),
+            ("h1", "a page heading"),
+            ("h2", "a heading at the foot"),
+            ("p", "a note"),
+        ]
+        assert reader.unclaimed == [
+            "loose in the stamp",
+            "inside an element nobody named",
+            "effaced the same way",
+        ]
+        assert reader.reader_attributes == [("p", "title", "read on hover, declared nowhere")]
+        assert reader.presentation_attributes == [("div", "hidden", "")]
+
     def test_no_element_hides_or_restyles_itself_inline(self) -> None:
         """A parser reads the document; a reader reads the render. This closes the two mechanisms
         that separate them without a stylesheet, and it closes nothing else.
@@ -1599,7 +1816,8 @@ class TestPageReference:
         Declared rather than banned, because Tier 1 uses `style` legitimately: the comparison's
         three bar segments are proportional, and their proportions are the claim the contract asks
         the reader to see. The declared values are built from the corpus, so this does not become a
-        third copy of the figures. The apparatus outside the renderer's output carries none at all.
+        third copy of the figures. The apparatus outside the renderer's output carries none at all,
+        and neither does the page furniture around both regions, so those two are flat empty lists.
 
         **What this does not cover, stated so it is not mistaken for more than it is.** Only
         `style` and `hidden`. A reader-visible span can still be effaced by `<s>` or `<del>`
@@ -1624,6 +1842,12 @@ class TestPageReference:
 
         # The apparatus, outside the two renderer-output fragments, has no reason to carry either.
         assert apparatus_text_units(text).presentation_attributes == []
+
+        # The furniture around both regions, on the same terms. Without this the stamp's headline,
+        # which is the whole of what the page says about its own status, could be wrapped in
+        # `<span hidden>` with the page totality assertion green, because that assertion reads the
+        # parse and the parse would still contain it.
+        assert page_text_units(text).presentation_attributes == []
 
     def test_the_embedded_scroll_container_is_reachable_from_the_keyboard(self) -> None:
         """The same sibling-fixture-only gap as the table headers, one attribute set over.
