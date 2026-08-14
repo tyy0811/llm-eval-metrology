@@ -951,6 +951,11 @@ VOID_ELEMENTS = frozenset({"hr", "br", "img", "input", "meta", "link", "source",
 #: printed text in the apparatus and not markup metadata.
 READER_ATTRIBUTES = frozenset({"aria-label", "alt", "title", "data-element"})
 
+#: Attributes that can take a span the parser reads off the page a reader sees. `hidden` removes it
+#: outright; `style` can carry `display: none` and beats any stylesheet rule that has no
+#: `!important`. Collected rather than banned, because the comparison bars use `style` legitimately.
+PRESENTATION_ATTRIBUTES = frozenset({"style", "hidden"})
+
 
 class DeclaredTextReader(HTMLParser):
     """Collects every reader-facing text unit in a fragment, and any text no unit claims.
@@ -970,11 +975,14 @@ class DeclaredTextReader(HTMLParser):
         self.units: list[tuple[str, list[str]]] = []
         self.unclaimed: list[str] = []
         self.reader_attributes: list[tuple[str, str, str]] = []
+        self.presentation_attributes: list[tuple[str, str, str]] = []
 
     def _record_attributes(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         for name, value in attrs:
             if name in READER_ATTRIBUTES:
                 self.reader_attributes.append((tag, name, value or ""))
+            if name in PRESENTATION_ATTRIBUTES:
+                self.presentation_attributes.append((tag, name, value or ""))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         self._record_attributes(tag, attrs)
@@ -1262,23 +1270,43 @@ class TestPageReference:
                 for property_name in ("display", "visibility", "!important"):
                     assert property_name not in body, f"{selector.strip()} sets {property_name}"
 
-    def test_the_apparatus_holds_the_family_card_the_table_and_the_pair_card(self) -> None:
+    def test_the_apparatus_holds_the_family_card_the_table_and_the_pair_card_in_order(self) -> None:
         """Siblings of the disclosure, not children of it, is the failure mode.
 
         Every component would render correctly and every figure would be right, and the reader
         would still meet the whole statistical apparatus on the first screen. Presence assertions
         cannot see the difference, so this one is about position.
+
+        The order is asserted too, and it is the seam between this file's two totality mechanisms.
+        Spec 11.1 fixes the apparatus as the family card, then the table of every adjacent pair,
+        then the pair cards: the family result bounds what any single pair can show, so a reader
+        who meets a pair card first meets a specific comparison before the limit that governs it.
+
+        Swapping the two `<article>` elements passed all 105 tests. Neither mechanism can see that
+        axis. Fragment equality asks whether each card appears verbatim somewhere, not where;
+        `apparatus_outside_the_rendered_cards` then deletes each fragment by exact string match
+        wherever it occurs, so the residue handed to the totality parser is identical whichever
+        card came first, and the declared unit list is unchanged. Containment bounded each marker
+        inside the disclosure without ever ordering them against each other. It is the boundary
+        between "total by fragment equality" and "total by declared literal", and nothing owned it.
         """
         text = page_reference_text()
         start, end = apparatus_span(text)
 
-        for marker in (
+        markers = (
             '<article class="card" aria-labelledby="family-summary">',
             '<div class="pair-table-block">',
             '<article class="card" aria-labelledby="pair-rank_3_vs_4',
-        ):
+        )
+        for marker in markers:
             assert marker in text, marker
             assert start < text.index(marker) < end, f"{marker} is not inside the apparatus"
+
+        positions = [text.index(marker) for marker in markers]
+        assert positions == sorted(positions), (
+            "spec 11.1 orders the apparatus family card, then table, then pair cards; this page "
+            f"orders them {[markers[i][:40] for i in sorted(range(3), key=positions.__getitem__)]}"
+        )
 
         # Nothing but the finding layer sits above the disclosure. Sliced from the body, because
         # the inlined stylesheet names every one of these classes and would answer for them.
@@ -1516,6 +1544,10 @@ class TestPageReference:
         in `unclaimed`, and the reverse for a `dd`, which no declared literal claims. The
         `data-element` annotation is shown being collected, because it is printed by the sheet and
         a reader sees it.
+
+        `presentation_attributes` is asserted empty against the real apparatus too, so `style` and
+        `hidden` are shown here being collected. Tier 1's declared list of them is non-empty and so
+        is self-falsifying; this one would not be.
         """
         reader = parse_text_units(
             '<details class="technical-apparatus">\n'
@@ -1526,6 +1558,8 @@ class TestPageReference:
             "    <tbody><tr><td>a cell</td></tr></tbody>\n"
             "  </table>\n"
             "  <dl><dt>a term</dt><dd>a definition</dd></dl>\n"
+            "  <p hidden>read by the parser, never by a reader</p>\n"
+            '  <div style="display: none">effaced the same way</div>\n'
             "</details>",
             APPARATUS_TEXT_UNITS,
         )
@@ -1535,9 +1569,83 @@ class TestPageReference:
             ("caption", "a caption"),
             ("th", "a header"),
             ("td", "a cell"),
+            ("p", "read by the parser, never by a reader"),
         ]
-        assert reader.unclaimed == ["loose in the disclosure", "a term", "a definition"]
+        assert reader.unclaimed == [
+            "loose in the disclosure",
+            "a term",
+            "a definition",
+            "effaced the same way",
+        ]
         assert reader.reader_attributes == [("caption", "data-element", "a tag")]
+        assert reader.presentation_attributes == [
+            ("p", "hidden", ""),
+            ("div", "style", "display: none"),
+        ]
+
+    def test_no_element_hides_or_restyles_itself_inline(self) -> None:
+        """A parser reads the document; a reader reads the render. This closes the two mechanisms
+        that separate them without a stylesheet, and it closes nothing else.
+
+        Both totality assertions compare parsed text, so a span that is present in the markup and
+        invisible on the page satisfies them exactly. Wrapping the fixture note's last sentence in
+        `<span style="display: none">` or `<span hidden>` left all 105 tests green while deleting,
+        from the reader's view, the sentence that says the four table rows and their cell figures
+        are synthetic. The reader then takes 1111 and 0.555 as measurements. Hiding the note's
+        first sentence instead removes the only statement on the page that the shipped table
+        carries all nineteen pairs, which is what section 1.2 rests on. An inline `style` beats any
+        stylesheet rule carrying no `!important`, so the sheet's own guards cannot reach it.
+
+        Declared rather than banned, because Tier 1 uses `style` legitimately: the comparison's
+        three bar segments are proportional, and their proportions are the claim the contract asks
+        the reader to see. The declared values are built from the corpus, so this does not become a
+        third copy of the figures. The apparatus outside the renderer's output carries none at all.
+
+        **What this does not cover, stated so it is not mistaken for more than it is.** Only
+        `style` and `hidden`. A reader-visible span can still be effaced by `<s>` or `<del>`
+        striking it through, by `font-size: 0`, `color: transparent`, `clip-path` or
+        `aria-hidden="true"` arriving through the stylesheet, or by CSS generated content adding
+        words the parser never sees. Those are ledgered, deliberately unenumerated: the whole
+        chain of rounds behind this file exists because an enumeration relocates the defect to
+        whatever it did not list, and an enumeration that looks total is worse than a named gap.
+        Deciding what a reader actually sees needs a rendering engine, which CI does not have.
+        """
+        text = page_reference_text()
+        lead = corpus_value("results:primary.largest_observed_gap")
+        mark = corpus_value("results:primary.first_rejection_gap_floor")
+
+        # Tier 1: the two comparison rows, and nothing else. Any other inline style, and any
+        # `hidden` at all, is an undeclared span between the parser and the reader.
+        assert tier_1_text_units(text).presentation_attributes == [
+            ("div", "style", f"flex: {lead};"),
+            ("div", "style", f"flex: {mark - lead};"),
+            ("div", "style", f"flex: {mark};"),
+        ]
+
+        # The apparatus, outside the two renderer-output fragments, has no reason to carry either.
+        assert apparatus_text_units(text).presentation_attributes == []
+
+    def test_the_embedded_scroll_container_is_reachable_from_the_keyboard(self) -> None:
+        """The same sibling-fixture-only gap as the table headers, one attribute set over.
+
+        `TestTableReference` holds `table_reference.html`'s scroll container to `tabindex="0"`,
+        `role="region"` and a label, and never opens this page. The container embedded here is the
+        one the approved hierarchy actually shows, and nothing asserted anything about it.
+
+        Chrome and Firefox focus a scrolling container by themselves and Safari does not, so
+        without `tabindex` a keyboard-only Safari reader cannot scroll this table at all. The
+        columns that fall outside a narrow viewport are the observed discordance and both p-value
+        columns, which is precisely the audit trail the apparatus exists to make reachable.
+        """
+        apparatus = apparatus_outside_the_rendered_cards(page_reference_text())
+
+        opening = apparatus.split("<table", 1)[0].rsplit('<div class="pair-table-scroll"', 1)
+        assert len(opening) == 2, "no .pair-table-scroll container before the embedded table"
+        attributes = opening[1].split(">", 1)[0]
+        assert 'tabindex="0"' in attributes, attributes
+        assert 'role="region"' in attributes, attributes
+        assert "aria-label=" in attributes, attributes
+        assert ".pair-table-scroll:focus-visible" in CARD_STYLESHEET
 
     def test_the_embedded_table_shows_the_settled_columns(self) -> None:
         """Every table assertion in this file read the sibling fixture, never this page's own copy.
