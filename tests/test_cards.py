@@ -659,10 +659,11 @@ class TestTableReference:
 
     def test_the_reference_exists_and_is_labelled_illustrative(self) -> None:
         """The plan's `"illustrative" in text.lower()` could not fail. Delete the whole
-        stamp block and nine occurrences survive: the <title>, the class name inside the
-        inlined stylesheet, and the four illustrative_* pair names. One assertion stood
-        between this repo and an unlabelled fixture and it passed with every labelling
-        signal removed, so it asserts on the stamp block and its wording instead.
+        stamp block and eight occurrences survive: the <title> (one), the class name
+        inside the inlined stylesheet (three, all `.stamp-illustrative` rules), and the
+        four illustrative_* pair names. One assertion stood between this repo and an
+        unlabelled fixture and it passed with every labelling signal removed, so it
+        asserts on the stamp block and its wording instead.
         """
         path = FIXTURES / "table_reference.html"
         assert path.is_file()
@@ -699,8 +700,11 @@ class TestTableReference:
         """D3.6 governs over D1.10's column sentence: no per-pair floor column.
 
         The plan searched the whole file, where four of the five strings also occur
-        outside the table: "pair" 26 times, "resolved-count gap" and "observed
-        discordance" in the D4 note, "observed p-value" inside a CSS comment. Only
+        outside the table: "pair" recurs throughout the note prose and, because
+        card.css is inlined into the fixture, grows with every ".pair-table" rule
+        added to the stylesheet, so no fixed count belongs in this docstring;
+        "resolved-count gap" and "observed discordance" in the D4 note, "observed
+        p-value" inside a CSS comment. Only
         "Holm-adjusted p-value" was unique to the header row, so corrupting any of the
         other four left the suite green. This reads the header cells out of the table
         region and compares the whole row, which also catches an added column.
