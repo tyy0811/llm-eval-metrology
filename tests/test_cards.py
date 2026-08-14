@@ -802,6 +802,24 @@ LEAD_SENTENCE = (
     "reliable difference."
 )
 
+#: The analogy's scoping clause. Every superlative about a lead has to say which pairs it ranges
+#: over: the largest lead between neighbors is 7, and the largest lead anywhere on the board is 24.
+#: Held as a literal because dropping one word restores a false claim while every figure on the
+#: page stays correct and every numeral stays pinned to its path.
+NEIGHBORING_SCOPE = "No neighboring pair anywhere in the top"
+
+#: The necessary-not-sufficient clause, which spec 10.2 makes a correctness requirement on the
+#: analogy rather than a stylistic one. It carries no numeral, so the staleness walk cannot reach
+#: it. Without it the page implies that reaching the mark would have demonstrated a difference.
+NOT_SUFFICIENT_CLAUSE = (
+    "Reaching the mark would not have settled a comparison on its own; it is the point at which "
+    "the question becomes answerable at all."
+)
+
+#: Spelled-out cardinals the page's prose uses. A digit-anchored guard cannot see a spelled number,
+#: so the word is derived from the corpus here rather than trusted.
+SPELLED_NUMBERS = {19: "nineteen", 20: "twenty", 21: "twenty one"}
+
 
 def corpus_value(qualified_path: str) -> int:
     """Resolve a source-qualified path such as `results:primary.family_size` against the corpus."""
@@ -836,6 +854,57 @@ def finding_prose(text: str) -> str:
     """The finding layer with tags removed and whitespace collapsed, as a reader sees it."""
     stripped = re.sub(r"<!--.*?-->", " ", finding_region(text), flags=re.DOTALL)
     return " ".join(re.sub(r"<[^>]+>", " ", stripped).split())
+
+
+def family_card_region(text: str) -> str:
+    """The family card fragment alone.
+
+    The three `0 of 19` renderings are separated only by their labels, so each label has to be
+    asserted where it belongs. Whole-page membership cannot do that: swap the finding layer's
+    label with the family banner's and both strings are still on the page, in each other's places.
+    """
+    opening = '<article class="card" aria-labelledby="family-summary">'
+    start = text.index(opening)
+    return text[start : text.index("</article>", start) + len("</article>")]
+
+
+def non_claims_items(text: str) -> list[str]:
+    """The non-claims, in order, as collapsed text.
+
+    Neither carries a numeral of its own beyond the two ranks, so the staleness walk does not
+    reach them and a deleted limit is invisible to every figure check. Spec 10.3 validates the
+    list by exact length, order and value, and so does this.
+    """
+    region = finding_region(text)
+    listing = region.split('<ul class="non-claims">', 1)[1].split("</ul>", 1)[0]
+    return [
+        " ".join(re.sub(r"<[^>]+>", " ", item.split("</li>", 1)[0]).split())
+        for item in listing.split("<li>")[1:]
+    ]
+
+
+def lead_scale_rows(text: str) -> list[tuple[str, str]]:
+    """The comparison's rows, in document order, as (modifier, fragment).
+
+    The bars have to be read per row. Asserting that each flex value appears somewhere in the
+    layer is order-free and row-free, so swapping the two rows' values leaves every string
+    present and draws the contract's comparison backwards.
+
+    Each row is cut at its own legend, which is its last element, so a row can never absorb the
+    prose that follows the scale.
+    """
+    region = finding_region(text)
+    rows = []
+    for chunk in region.split('<div class="lead-scale-row ')[1:]:
+        modifier = chunk.split('"', 1)[0]
+        rows.append((modifier, chunk[: chunk.index("</p>") + len("</p>")]))
+    return rows
+
+
+def strip_flex(row: str, part: str) -> int | None:
+    """The flex growth of one segment of a row's bar, or None when the segment is absent."""
+    match = re.search(rf'<div class="strip-{part}" style="flex: (\d+);"', row)
+    return None if match is None else int(match.group(1))
 
 
 def apparatus_span(text: str) -> tuple[int, int]:
@@ -909,6 +978,25 @@ class TestPageReference:
         assert "open" not in opening_tag, opening_tag
         assert "<summary>Show statistical details and audit trail</summary>" in text
 
+    def test_no_stylesheet_rule_reveals_the_closed_apparatus(self) -> None:
+        """The absence of an `open` attribute is not on its own a closed disclosure.
+
+        A closed `details` hides its content through the engine's own rule, and CSS can override
+        that: `::details-content { content-visibility: visible }`, or a `display` or `visibility`
+        declaration on the apparatus's children, renders the whole technical half on the first
+        screen while the markup still reads as closed and every containment assertion passes.
+        Measuring the collapsed state in a browser is what proves it today, and that measurement
+        does not run in CI, so the sheet is held to introducing nothing that could undo it.
+        """
+        rules = re.sub(r"/\*.*?\*/", " ", CARD_STYLESHEET, flags=re.DOTALL)
+
+        assert "details-content" not in rules
+        assert "content-visibility" not in rules
+        for selector, body in re.findall(r"([^{}]*)\{([^{}]*)\}", rules):
+            if "details" in selector or "technical-apparatus" in selector:
+                for property_name in ("display", "visibility", "!important"):
+                    assert property_name not in body, f"{selector.strip()} sets {property_name}"
+
     def test_the_apparatus_holds_the_family_card_the_table_and_the_pair_card(self) -> None:
         """Siblings of the disclosure, not children of it, is the failure mode.
 
@@ -956,9 +1044,14 @@ class TestPageReference:
             for side in ("system_a", "system_b"):
                 assert pair["comparison"][side] not in region
 
-        for banned in ("provenance", "revision", "fetched", "swe-bench", "deviation", "d4 "):
+        for banned in ("provenance", "revision", "fetched", "swe-bench", "deviation"):
             assert banned not in prose.lower(), banned
         assert cards["family"]["provenance"]["pinned_revision"] not in region
+
+        # Total over deviation labels, not just D4. The codebase also cites D7, D1.9 and D1.11,
+        # and a `D7` parenthetical is the same breach of Tier 1 as a `D4` one.
+        label = re.search(r"\bd\d", prose.lower())
+        assert label is None, f"a decision label in the finding layer: {label}"
 
     def test_the_lead_sentence_is_verbatim(self) -> None:
         """The binding sentence is the one line no later task may reword.
@@ -967,6 +1060,52 @@ class TestPageReference:
         it across source lines, which is how every other fixture sets a paragraph.
         """
         assert LEAD_SENTENCE in finding_prose(page_reference_text())
+
+    def test_the_analogy_scopes_its_superlative_to_neighboring_pairs(self) -> None:
+        """Drop one word and the page states a falsehood with every figure still correct.
+
+        The paragraph once read "The largest lead anywhere in the top 20 was 7". Measured against
+        the corpus, the largest lead between neighbors is 7 and the largest lead anywhere on the
+        board is 24, so that sentence was false and it contradicted the second non-claim, which
+        says the result cannot speak to rank 1 against rank 20.
+
+        No figure check reaches this. Remove "neighboring" and every numeral is still 7, still
+        pinned to `results:primary.largest_observed_gap`, and still drawn correctly by the bar,
+        because none of those assertions sees the subject of the sentence. Only the words do.
+        """
+        prose = finding_prose(page_reference_text())
+
+        assert NEIGHBORING_SCOPE in prose, "the analogy's superlative is unscoped"
+        assert "largest lead anywhere" not in prose, "the unscoped superlative is back"
+
+    def test_the_analogy_keeps_the_necessary_not_sufficient_clause(self) -> None:
+        """It carries no numeral, so the staleness walk cannot see it go.
+
+        Spec 10.2 makes this a correctness requirement rather than a flourish: clearing the
+        opening lead is necessary, not sufficient. Delete the clause and the analogy reads as if
+        reaching the mark would have demonstrated a difference, which is a false claim about the
+        procedure, and the rest of the paragraph still parses as ordinary prose.
+        """
+        prose = finding_prose(page_reference_text())
+
+        assert NOT_SUFFICIENT_CLAUSE in prose, "the analogy now overclaims what the mark settles"
+
+    def test_both_non_claims_are_present_in_order(self) -> None:
+        """Half of contract item 5 could be deleted with the whole suite green.
+
+        Neither limit carries a figure of its own, so no staleness anchor reaches the first one at
+        all; the second survived only by the accident of naming two ranks. Spec 10.3 validates the
+        list by exact length, order and value, and a limit is worth nothing if it can be dropped
+        quietly, so this is exact rather than a membership check.
+        """
+        board = corpus_value("aggregates:family_size")
+
+        assert non_claims_items(page_reference_text()) == [
+            "This does not show the systems are equivalent. Not finding a difference is not the "
+            "same as showing there is none, and this experiment registered no equivalence test.",
+            "This does not cover non-adjacent systems. Only neighboring pairs were compared, so "
+            f"it says nothing about how rank 1 compares with rank {board}.",
+        ]
 
     def test_every_finding_layer_figure_is_the_committed_corpus_value(self) -> None:
         """Spec 12.1's staleness guard, and it is total over the layer.
@@ -1018,16 +1157,31 @@ class TestPageReference:
         analogy's sentence about the largest lead was wrong while every bar was right. So the
         three places the observed lead appears, the bar, the legend and the analogy prose, are
         asserted to read the one source rather than each being separately plausible.
+
+        Each value is bound to its own row. Asserting only that `flex: 7`, `flex: 3` and
+        `flex: 10` each appear somewhere in the layer is order-free and row-free: swap the two
+        rows and all three strings survive, while the page draws the largest lead as a full track
+        and the mark as seven tenths of one, which is the contract's comparison exactly backwards
+        with both labels still correct.
         """
-        region = finding_region(page_reference_text())
         prose = finding_prose(page_reference_text())
         lead = corpus_value("results:primary.largest_observed_gap")
         mark = corpus_value("results:primary.first_rejection_gap_floor")
         assert lead < mark, "the lead cleared the mark, so this page's copy no longer holds"
 
-        assert f'style="flex: {lead};"' in region
-        assert f'style="flex: {mark - lead};"' in region
-        assert f'style="flex: {mark};"' in region
+        rows = lead_scale_rows(page_reference_text())
+        assert [modifier for modifier, _ in rows] == ["is-observed", "is-mark"]
+        observed, marked = rows[0][1], rows[1][1]
+
+        # The observed row: the fill is the lead, the remainder is what it fell short by.
+        assert strip_flex(observed, "a") == lead
+        assert strip_flex(observed, "b") == mark - lead
+        assert f"<span>largest lead</span><span>{lead} tasks</span>" in observed
+
+        # The mark row: one segment filling the track, so the track's end is the mark itself.
+        assert strip_flex(marked, "a") == mark
+        assert strip_flex(marked, "b") is None, "the mark row must fill its track"
+        assert f"<span>minimum opening lead</span><span>{mark} tasks</span>" in marked
 
         for pattern in (r"largest lead (\d+) tasks", r"led by more than (\d+)\."):
             match = re.search(pattern, prose)
@@ -1110,6 +1264,11 @@ class TestPageReference:
         The finding layer prints the observed count, the family banner prints `separable_count`
         and the family card's observed line prints `resolved_count`. No value check can tell them
         apart, so the labels are the whole guard.
+
+        Each label is therefore asserted in its own region and refused in the other. Whole-page
+        membership is not a three-way control: swap the finding layer's label with the family
+        banner's and both strings are still on the page, each in the other's place, and every
+        `in text` assertion still passes.
         """
         text = page_reference_text()
         figure = (
@@ -1123,25 +1282,52 @@ class TestPageReference:
             "results:primary.headline.distinguishable_count"
         )
 
+        finding = finding_region(text)
+        family = family_card_region(text)
         assert text.count(figure) == 3
-        assert f"<b>{figure}</b> neighboring pairs showed a reliable difference" in text
-        assert f"<b>{figure}</b> adjacent pairs separable" in text
-        assert f"<dt>Resolved by the observed test</dt><dd>{figure}</dd>" in text
+        assert finding.count(figure) == 1
+        assert family.count(figure) == 2
+
+        observed_label = f"<b>{figure}</b> neighboring pairs showed a reliable difference"
+        separable_label = f"<b>{figure}</b> adjacent pairs separable"
+        resolved_label = f"<dt>Resolved by the observed test</dt><dd>{figure}</dd>"
+
+        assert observed_label in finding
+        assert separable_label not in finding
+        assert resolved_label not in finding
+
+        assert separable_label in family
+        assert resolved_label in family
+        assert observed_label not in family
 
     def test_the_reduced_table_says_it_is_reduced(self) -> None:
         """Section 1.2: a reduced row count in a fixture must establish nothing about production.
 
         The layout exploration that showed fewer rows is the reason this sentence is required on
         the page's face rather than left to the spec.
+
+        The row count is spelled out in words on the page, in both the stamp and the note, and a
+        digit-anchored guard cannot see a spelled number: move the pair family size and every
+        numeral test would fail while "nineteen" sat there stale. So the word is derived from the
+        corpus rather than hardcoded here.
         """
         text = page_reference_text()
         start, end = apparatus_span(text)
         body = text.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
+        family_size = corpus_value("results:primary.family_size")
+        assert family_size in SPELLED_NUMBERS, f"no spelled form registered for {family_size}"
+        spelled = SPELLED_NUMBERS[family_size]
+
         assert body.count("<tr>") == 4
         apparatus = text[start:end]
-        assert "nineteen" in apparatus
+        assert spelled in apparatus
         assert "fixture convenience" in apparatus
+
+        stamp = " ".join(
+            text.split('<div class="stamp-illustrative">', 1)[1].split("</div>", 1)[0].split()
+        )
+        assert spelled in stamp
 
     def test_the_reference_inlines_the_current_stylesheet(self) -> None:
         """The same drift `verdict_reference.html` already demonstrates, on the page that fixes
