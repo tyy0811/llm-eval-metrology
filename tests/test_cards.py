@@ -25,6 +25,7 @@ from metrology.cards import (
     ruler_marker_class,
 )
 from metrology.reporting import (
+    FINDINGS_COLUMNS,
     PairCounts,
     Provenance,
     build_family_report,
@@ -821,9 +822,38 @@ NOT_SUFFICIENT_CLAUSE = (
 #: so the word is derived from the corpus here rather than trusted.
 SPELLED_NUMBERS = {4: "four", 19: "nineteen", 20: "twenty", 21: "twenty one"}
 
+#: The apparatus's own summary, which is the only control on the page and the whole of its
+#: invitation to open the technical half. Declared here so the totality assertion below claims it.
+APPARATUS_SUMMARY = "Show statistical details and audit trail"
+
+#: The reference table's caption. Held as a whole string rather than a substring: an `in` check
+#: passes an appended clause, so `Every adjacent pair, as tested` could grow `, though several were
+#: later retested and reversed` with nothing failing.
+TABLE_CAPTION = "Every adjacent pair, as tested"
+
+#: The reduced table's four synthetic rows, cell by cell, in document order. Nothing read these
+#: cells before: the repdigit guard that refuses a cell which could pass for a measurement is in
+#: `TestTableReference`, which only ever opens the sibling fixture.
+REDUCED_TABLE_ROWS = (
+    ("illustrative_a_vs_b", "1111", "9999", "1.000", "1.000"),
+    ("illustrative_b_vs_c", "3333", "9999", "0.888", "1.000"),
+    ("illustrative_c_vs_d", "5555", "9999", "0.555", "1.000"),
+    ("illustrative_d_vs_e", "7777", "9999", "0.222", "1.000"),
+)
+
+#: The table block's D4 disclosure. It states which of the five columns carry the harness
+#: comparability caveat and which do not, so an edit to it changes what a reader believes about the
+#: provenance of every cell above it.
+PAIR_TABLE_NOTE = (
+    "The observed discordance and both p-value columns read per-instance artifacts and carry the "
+    "D4 harness comparability caveat: submissions do not record their harness version. The pair "
+    "identity and the resolved-count gap derive from published aggregates and do not."
+)
+
 #: How many rows the reference's table shows. A fixture choice, not a corpus figure: the shipped
-#: document carries every adjacent pair, and section 1.2 turns on the page saying so.
-REDUCED_ROWS = 4
+#: document carries every adjacent pair, and section 1.2 turns on the page saying so. Derived from
+#: the declared rows so the spelled word, the `<tr>` count and the cells cannot disagree.
+REDUCED_ROWS = len(REDUCED_TABLE_ROWS)
 
 
 def corpus_value(qualified_path: str) -> int:
@@ -906,23 +936,35 @@ def non_claims_items(text: str) -> list[str]:
 #: literal can claim, which is the condition `tier_1_text_units` exists to detect.
 TEXT_UNITS = frozenset({"p", "li"})
 
+#: The same, for the technical apparatus, which carries a disclosure control and a table as well as
+#: prose. A `th` and a `td` are read aloud one at a time and are as much reader-facing text as a
+#: paragraph is; the summary is the only words a reader sees before deciding to open the half.
+APPARATUS_TEXT_UNITS = TEXT_UNITS | frozenset({"summary", "caption", "th", "td"})
+
 #: Void elements, which never close. `<hr class="card-rail">` is one, and treating it as an open
 #: element would unbalance the parse stack and swallow everything after it.
 VOID_ELEMENTS = frozenset({"hr", "br", "img", "input", "meta", "link", "source", "wbr"})
 
 #: Attributes that put words in front of a reader without putting them in the document text.
-READER_ATTRIBUTES = frozenset({"aria-label", "alt", "title"})
+#: `data-element` is here because `card.css` renders it: `.eyebrow::after` and
+#: `.pair-table-block [data-element]::after` both set `content: attr(data-element)`, so its value is
+#: printed text in the apparatus and not markup metadata.
+READER_ATTRIBUTES = frozenset({"aria-label", "alt", "title", "data-element"})
 
 
-class Tier1Reader(HTMLParser):
+class DeclaredTextReader(HTMLParser):
     """Collects every reader-facing text unit in a fragment, and any text no unit claims.
 
     A real parse rather than a selector list, because a selector list is an enumeration and this
     exists to stop enumerating. Text in an element nobody thought to name lands in `unclaimed`.
+
+    Named for the property rather than for Tier 1, because both tiers use it. The unit set is a
+    parameter: Tier 1 is prose only, the apparatus also holds a disclosure summary and a table.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, text_units: frozenset[str] = TEXT_UNITS) -> None:
         super().__init__(convert_charrefs=True)
+        self.text_units = text_units
         self.stack: list[str] = []
         self.open_units: list[int] = []
         self.units: list[tuple[str, list[str]]] = []
@@ -939,7 +981,7 @@ class Tier1Reader(HTMLParser):
         if tag in VOID_ELEMENTS:
             return
         self.stack.append(tag)
-        if tag in TEXT_UNITS:
+        if tag in self.text_units:
             self.units.append((tag, []))
             self.open_units.append(len(self.units) - 1)
 
@@ -951,7 +993,7 @@ class Tier1Reader(HTMLParser):
             return
         while self.stack:
             popped = self.stack.pop()
-            if popped in TEXT_UNITS and self.open_units:
+            if popped in self.text_units and self.open_units:
                 self.open_units.pop()
             if popped == tag:
                 return
@@ -965,15 +1007,20 @@ class Tier1Reader(HTMLParser):
             self.unclaimed.append(" ".join(data.split()))
 
 
-def parse_text_units(fragment: str) -> Tier1Reader:
+def parse_text_units(fragment: str, text_units: frozenset[str] = TEXT_UNITS) -> DeclaredTextReader:
     """Parse any fragment into its reader-facing units."""
-    parser = Tier1Reader()
+    parser = DeclaredTextReader(text_units)
     parser.feed(re.sub(r"<!--.*?-->", " ", fragment, flags=re.DOTALL))
     parser.close()
     return parser
 
 
-def tier_1_text_units(text: str) -> Tier1Reader:
+def declared_units(reader: DeclaredTextReader) -> list[tuple[str, str]]:
+    """One reader's units as (tag, collapsed text), which is the form the pins are written in."""
+    return [(tag, collapse(" ".join(chunks))) for tag, chunks in reader.units]
+
+
+def tier_1_text_units(text: str) -> DeclaredTextReader:
     """Parse the finding layer into its reader-facing units."""
     return parse_text_units(finding_region(text))
 
@@ -1046,6 +1093,92 @@ def apparatus_span(text: str) -> tuple[int, int]:
     raise AssertionError("details.technical-apparatus is never closed")
 
 
+def rendered_card_fragments() -> dict[str, str]:
+    """The two card fragments the apparatus quotes, exactly as the renderer emits them.
+
+    The pair card carries contract item 7's human label, which is the one edit the reference makes
+    to renderer output. Built once and shared, so the excision below and the fragment-equality
+    tests cannot disagree about what counts as renderer output.
+    """
+    cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
+    pair = render_card(cards["pairs"]["rank_3_vs_4"])
+    relabelled = pair.replace("Pair verdict: rank_3_vs_4", "Pair verdict: Ranks 3 and 4")
+    assert relabelled != pair, "the renderer no longer emits the raw identifier"
+    return {
+        "family": textwrap.indent(render_card(cards["family"]), "    "),
+        "pair": textwrap.indent(relabelled, "    "),
+    }
+
+
+def apparatus_outside_the_rendered_cards(text: str) -> str:
+    """The apparatus with the two renderer-output fragments cut out.
+
+    Those two regions are already total by construction: they are asserted equal to
+    `render_card(...)` character for character, so nothing can be added inside them. Everything
+    else in the apparatus is fixture copy that no such equality reaches, and it is what the
+    totality assertion has to account for.
+
+    The excision is only sound while each fragment really is present verbatim exactly once, so
+    that is asserted rather than assumed. A silent no-op replace would leave the card text in the
+    region and turn a precise failure into a confusing one.
+    """
+    start, end = apparatus_span(text)
+    apparatus = text[start:end]
+    for name, fragment in rendered_card_fragments().items():
+        assert apparatus.count(fragment) == 1, (
+            f"the {name} card is not renderer output in the apparatus exactly once, so fragment "
+            "equality does not cover it and cutting it out here would hide an edit"
+        )
+        apparatus = apparatus.replace(fragment, "\n")
+    return apparatus
+
+
+def apparatus_text_units(text: str) -> DeclaredTextReader:
+    """Parse the apparatus, minus the fragment-equality regions, into its reader-facing units."""
+    return parse_text_units(apparatus_outside_the_rendered_cards(text), APPARATUS_TEXT_UNITS)
+
+
+def apparatus_table(text: str) -> str:
+    """The table inside `page_reference.html`, which is not the sibling fixture's table.
+
+    Every table assertion in this file until now read `table_reference.html`. This page embeds its
+    own copy, and no test had ever opened it.
+    """
+    apparatus = apparatus_outside_the_rendered_cards(text)
+    assert apparatus.count("<table") == 1, "expected one table in the apparatus"
+    return apparatus.split("<table", 1)[1].split("</table>", 1)[0]
+
+
+def table_caption(text: str) -> str:
+    """The embedded table's caption, whole, as a reader sees it."""
+    captions = re.findall(r"<caption\b[^>]*>(.*?)</caption>", apparatus_table(text), re.DOTALL)
+    assert len(captions) == 1, f"expected one caption, found {len(captions)}"
+    return collapse(captions[0])
+
+
+def apparatus_note_literal() -> str:
+    """The reference's own note above the table, as it must read.
+
+    One declaration, read both by the note's own test and by the totality assertion, so the
+    apparatus cannot be total against one wording while the note test holds a different one.
+
+    The row count and the family size are spelled out in words on the page, and a digit-anchored
+    guard cannot see a spelled number, so both words are derived from their source rather than
+    typed: move the pair family size and every numeral test would fail while "nineteen" sat stale.
+    """
+    family_size = corpus_value("results:primary.family_size")
+    for spelled_out in (family_size, REDUCED_ROWS):
+        assert spelled_out in SPELLED_NUMBERS, f"no spelled form registered for {spelled_out}"
+    shipped, shown = SPELLED_NUMBERS[family_size], SPELLED_NUMBERS[REDUCED_ROWS]
+    return (
+        f"The shipped document carries all {shipped} adjacent pairs in this table, and both "
+        f"selected pair cards. The {shown} rows below are a fixture convenience and establish "
+        "nothing about which pairs ship: the table is built from every adjacent pair, and the "
+        f"pair cards come from the registered selection rule. These {shown} rows and their cell "
+        "figures are synthetic, as approved in table_reference.html."
+    )
+
+
 class TestPageReference:
     """T3.4 full-page reference: the second D1.3 gate.
 
@@ -1093,14 +1226,22 @@ class TestPageReference:
         `open` on the element, or a second disclosure somewhere, and the reviewer sees the
         p-values, the identifiers and the provenance in the first reading, which is exactly what
         the contract moves out of it.
+
+        The summary is pinned exactly, and it is read as the first one inside the disclosure so it
+        is the apparatus's own rather than a card's nested `Statistics` block. Membership against
+        the whole page cannot make that distinction, and the summary is the whole of what a reader
+        sees before deciding whether the technical half is worth opening.
         """
         text = page_reference_text()
         assert text.count('<details class="technical-apparatus"') == 1
 
-        start, _ = apparatus_span(text)
+        start, end = apparatus_span(text)
         opening_tag = text[start : text.index(">", start) + 1]
         assert "open" not in opening_tag, opening_tag
-        assert "<summary>Show statistical details and audit trail</summary>" in text
+
+        summaries = re.findall(r"<summary\b[^>]*>(.*?)</summary>", text[start:end], re.DOTALL)
+        assert summaries, "the apparatus has no summary"
+        assert collapse(summaries[0]) == APPARATUS_SUMMARY
 
     def test_no_stylesheet_rule_reveals_the_closed_apparatus(self) -> None:
         """The absence of an `open` attribute is not on its own a closed disclosure.
@@ -1243,9 +1384,8 @@ class TestPageReference:
         mark = corpus_value("results:primary.first_rejection_gap_floor")
 
         reader = tier_1_text_units(page_reference_text())
-        units = [(tag, collapse(" ".join(chunks))) for tag, chunks in reader.units]
 
-        assert units == [
+        assert declared_units(reader) == [
             (
                 "p",
                 "Using the statistical test chosen in advance, no neighboring "
@@ -1313,12 +1453,111 @@ class TestPageReference:
             "</article>"
         )
 
-        assert [(tag, collapse(" ".join(chunks))) for tag, chunks in reader.units] == [
-            ("p", "declared"),
-            ("li", "a limit"),
-        ]
+        assert declared_units(reader) == [("p", "declared"), ("li", "a limit")]
         assert reader.unclaimed == ["loose in a section", "inside an element nobody named"]
         assert reader.reader_attributes == [("div", "aria-label", "read aloud, printed nowhere")]
+
+    def test_every_word_a_reader_sees_in_the_apparatus_is_declared(self) -> None:
+        """Total over the technical half, on the same terms as Tier 1: every reader-facing span in
+        `details.technical-apparatus` that fragment equality does not already own is claimed by
+        exactly one declared literal, and nothing else is there.
+
+        Round 3 made Tier 1 total and left the apparatus enumerated, and the same defect was alive
+        in it. Inserting
+
+            <p>A follow-up re-analysis using a less conservative correction found several of these
+            pairs to be separable after all, which the family gate above does not reflect.</p>
+
+        between the family card's `</article>` and the fixture note passed the whole class, because
+        no assertion had ever looked at that region for extraneous content. It is a fabricated
+        finding that contradicts the family card two lines above it, and the reader who opens the
+        apparatus is precisely the reader who chose to dig past the headline to check.
+
+        Appending to the table caption passed for the same reason one level down:
+        `test_tier_1_names_one_concept_with_one_word` asked for the caption with `in`, so
+        `Every adjacent pair, as tested` could grow `, though several were later retested and
+        reversed` and stay green.
+
+        The apparatus differs from Tier 1 in one way this exploits. The family card and the pair
+        card are renderer output held character for character against `render_card(...)`, so they
+        are already total by construction and are cut out rather than re-declared. What remains is
+        fixture copy: the summary, the note, the table and anything between or around them.
+
+        Units are widened past `p` and `li` because the apparatus is not only prose. A `th` and a
+        `td` are read out one cell at a time, a `caption` names the whole table, and the summary is
+        the only text a reader sees before deciding to open the half. `data-element` is a reader
+        attribute here because `card.css` prints it: `.pair-table-block [data-element]::after` sets
+        `content: attr(data-element)`, so its value is text on the page, not markup metadata.
+        """
+        reader = apparatus_text_units(page_reference_text())
+
+        assert declared_units(reader) == [
+            ("summary", APPARATUS_SUMMARY),
+            ("p", apparatus_note_literal()),
+            ("caption", TABLE_CAPTION),
+            *[("th", column) for column in FINDINGS_COLUMNS],
+            *[("td", cell) for row in REDUCED_TABLE_ROWS for cell in row],
+            ("p", PAIR_TABLE_NOTE),
+        ]
+
+        assert reader.unclaimed == [], "apparatus text outside any declared unit"
+        assert reader.reader_attributes == [
+            ("div", "aria-label", "Pair table"),
+            ("caption", "data-element", "pair table"),
+            ("p", "data-element", "D4 disclosure"),
+        ]
+
+    def test_the_apparatus_reader_detects_what_it_claims_to_detect(self) -> None:
+        """The apparatus totality rests on two comparisons against an empty list, and an empty list
+        is also what a detector wired to nothing produces.
+
+        The Tier 1 detector test does not cover this configuration: the unit set is wider here, so
+        a `th`, a `td`, a `caption` and a `summary` have to be shown landing in `units` rather than
+        in `unclaimed`, and the reverse for a `dd`, which no declared literal claims. The
+        `data-element` annotation is shown being collected, because it is printed by the sheet and
+        a reader sees it.
+        """
+        reader = parse_text_units(
+            '<details class="technical-apparatus">\n'
+            "  <summary>a control</summary>\n"
+            "  loose in the disclosure\n"
+            '  <table><caption data-element="a tag">a caption</caption>\n'
+            "    <thead><tr><th>a header</th></tr></thead>\n"
+            "    <tbody><tr><td>a cell</td></tr></tbody>\n"
+            "  </table>\n"
+            "  <dl><dt>a term</dt><dd>a definition</dd></dl>\n"
+            "</details>",
+            APPARATUS_TEXT_UNITS,
+        )
+
+        assert declared_units(reader) == [
+            ("summary", "a control"),
+            ("caption", "a caption"),
+            ("th", "a header"),
+            ("td", "a cell"),
+        ]
+        assert reader.unclaimed == ["loose in the disclosure", "a term", "a definition"]
+        assert reader.reader_attributes == [("caption", "data-element", "a tag")]
+
+    def test_the_embedded_table_shows_the_settled_columns(self) -> None:
+        """Every table assertion in this file read the sibling fixture, never this page's own copy.
+
+        `TestTableReference` holds `table_reference.html` to `metrology.reporting.FINDINGS_COLUMNS`
+        and refuses a per-pair floor column per D3.6. The table embedded here, which is the one the
+        approved hierarchy actually shows, had no header check of any kind: a renamed column, a
+        sixth column, or the floor column D3.6 excludes could all have entered it while the sibling
+        stayed correct and the whole suite stayed green.
+
+        The header row is read out of the table region and compared whole, in order, so a reworded
+        column and an added one both fail. Comparing against the tuple the renderer will be handed
+        is what makes this a drift guard rather than a second transcription.
+        """
+        table = apparatus_table(page_reference_text())
+
+        assert re.findall(r"<th\b[^>]*>(.*?)</th>", table, flags=re.DOTALL) == list(
+            FINDINGS_COLUMNS
+        )
+        assert "floor" not in table.lower(), "D3.6: no per-pair floor column"
 
     def test_the_analogy_and_the_task_level_note_are_verbatim(self) -> None:
         """A sentence pin cannot see the sentence next to it, which is the same defect one level
@@ -1385,6 +1624,12 @@ class TestPageReference:
         registered wording with it, so the second half is asserted too. It names the strings
         rather than counting them, because a count would fail on any unrelated rewording in the
         apparatus and so would fail for the wrong reason.
+
+        The caption is the one of the four that is fixture copy rather than renderer output, so it
+        is compared whole rather than by membership. The other three sit inside the family card,
+        which fragment equality already holds character for character. Asked for with `in`, the
+        caption could be appended to: `Every adjacent pair, as tested, though several were later
+        retested and reversed` still contains the substring and still says "adjacent" once.
         """
         text = page_reference_text()
         start, end = apparatus_span(text)
@@ -1394,7 +1639,8 @@ class TestPageReference:
         assert "Adjacent pairs only. Non-adjacent comparisons are out of scope." in apparatus
         assert "adjacent pairs separable" in apparatus
         assert "Largest observed adjacent gap" in apparatus
-        assert "Every adjacent pair, as tested" in apparatus
+        assert table_caption(text) == TABLE_CAPTION
+        assert "adjacent" in TABLE_CAPTION
 
     def test_every_finding_layer_figure_is_the_committed_corpus_value(self) -> None:
         """Spec 12.1's staleness guard, and it is total over the layer.
@@ -1489,9 +1735,8 @@ class TestPageReference:
         the corpus. Each figure it renders is therefore also held to its path in `results.json`.
         """
         cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
-        rendered = textwrap.indent(render_card(cards["family"]), "    ")
 
-        assert rendered in page_reference_text()
+        assert rendered_card_fragments()["family"] in page_reference_text()
 
         finding = cards["family"]["family_finding"]
         disclosure = finding["progressive_disclosure"]
@@ -1520,12 +1765,9 @@ class TestPageReference:
         which is what stops the relabelling from becoming a licence to edit the card's figures.
         """
         cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
-        rendered = render_card(cards["pairs"]["rank_3_vs_4"])
-        relabelled = rendered.replace("Pair verdict: rank_3_vs_4", "Pair verdict: Ranks 3 and 4")
-        assert relabelled != rendered, "the renderer no longer emits the raw identifier"
 
         text = page_reference_text()
-        assert textwrap.indent(relabelled, "    ") in text
+        assert rendered_card_fragments()["pair"] in text
 
         heading = re.search(r"<h2 class=\"eyebrow\" id=\"pair-[^\"]+\">(.*?)</h2>", text)
         assert heading is not None
@@ -1611,18 +1853,11 @@ class TestPageReference:
         body = text.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
         family_size = corpus_value("results:primary.family_size")
-        for spelled_out in (family_size, REDUCED_ROWS):
-            assert spelled_out in SPELLED_NUMBERS, f"no spelled form registered for {spelled_out}"
-        shipped, shown = SPELLED_NUMBERS[family_size], SPELLED_NUMBERS[REDUCED_ROWS]
+        assert family_size in SPELLED_NUMBERS, f"no spelled form registered for {family_size}"
+        shipped = SPELLED_NUMBERS[family_size]
 
         assert body.count("<tr>") == REDUCED_ROWS
-        assert apparatus_note(text) == (
-            f"The shipped document carries all {shipped} adjacent pairs in this table, and both "
-            f"selected pair cards. The {shown} rows below are a fixture convenience and establish "
-            "nothing about which pairs ship: the table is built from every adjacent pair, and the "
-            f"pair cards come from the registered selection rule. These {shown} rows and their "
-            "cell figures are synthetic, as approved in table_reference.html."
-        )
+        assert apparatus_note(text) == apparatus_note_literal()
 
         stamp = " ".join(
             text.split('<div class="stamp-illustrative">', 1)[1].split("</div>", 1)[0].split()
