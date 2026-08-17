@@ -40,6 +40,30 @@
         "note": "separable asks whether rejection was reachable at all; resolved asks whether the observed test rejected, which is the stronger requirement",
         "resolved_count": 0
       },
+      "plain_language": {
+        "analogy": "It works like a qualifying mark. Before a difference between two neighboring systems could count as reliable, that pair needed a lead of at least 10 tasks. No neighboring pair anywhere in the top 20 led by more than 7. None reached the mark, so none could qualify. Reaching the mark would not have settled a comparison on its own; it is the point at which the question becomes answerable at all.",
+        "comparison": {
+          "largest_lead": 7,
+          "largest_lead_label": "largest lead",
+          "opening_lead": 10,
+          "opening_lead_label": "minimum opening lead",
+          "unit": "tasks"
+        },
+        "headline": {
+          "count": 0,
+          "of": 19,
+          "unit": "neighboring pairs"
+        },
+        "lead": "Using the statistical test chosen in advance, no neighboring top-20 pair showed a reliable difference.",
+        "lead_basis": "distinguishable_count, the observed test at the registered correction",
+        "non_claims": [
+          "This does not show the systems are equivalent. Not finding a difference is not the same as showing there is none, and this experiment registered no equivalence test.",
+          "This does not cover systems that are not neighbors. Only neighboring pairs were compared, so it says nothing about how rank 1 compares with rank 20."
+        ],
+        "scope": "The top 20 creates 19 neighboring comparisons, each measured on 500 tasks.",
+        "task_level_basis": "derived from published aggregates alone; per-instance work characterizes the count and cannot overturn it",
+        "task_level_note": "Task-by-task results add detail but cannot change this. A pair's lead sets a ceiling on how strong its evidence can get, and a lead of 7 stays under the mark even if every task the two systems disagreed on had gone the same way. The headline follows from the published totals alone."
+      },
       "progressive_disclosure": {
         "secondary_family_floor": 9,
         "secondary_family_size": 10

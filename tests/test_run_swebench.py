@@ -731,3 +731,30 @@ class TestSelectionRuleHasOneHome:
         # too: run.py's names must be the same objects as reporting's, not lookalikes.
         assert run.adjacent_pairs is reporting.adjacent_pairs
         assert run.illustrative_pair_names is reporting.illustrative_pair_names
+
+
+class TestPlainLanguageIsWired:
+    """run.py is the only place that reads the registered paths, and family_card_json
+    receives the completed block. FamilyReport carries no board size and no task count,
+    and its nearest substitute for the headline count is resolved_count, which is exactly
+    the D3.4 substitution."""
+
+    def test_the_card_carries_the_block(self) -> None:
+        cards = json.loads(
+            (
+                Path(__file__).resolve().parent.parent / "experiments/swebench/results/cards.json"
+            ).read_text(encoding="utf-8")
+        )
+        block = cards["family"]["family_finding"]["plain_language"]
+        assert block["headline"] == {"count": 0, "of": 19, "unit": "neighboring pairs"}
+        assert block["comparison"]["largest_lead"] == 7
+        assert block["comparison"]["opening_lead"] == 10
+
+    def test_family_card_json_does_not_build_the_block_itself(self) -> None:
+        """It cannot: FamilyReport has neither the board size nor the task count."""
+        source = (Path(__file__).resolve().parent.parent / "metrology/reporting.py").read_text(
+            encoding="utf-8"
+        )
+        body = source.split("def family_card_json")[1].split("\ndef ")[0]
+        assert "plain_language_finding(" not in body
+        assert "PlainLanguageInputs(" not in body

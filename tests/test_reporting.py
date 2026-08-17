@@ -27,6 +27,7 @@ from metrology.reporting import (
     VERDICT_NOT_RESOLVED,
     VERDICT_RESOLVED,
     PairCounts,
+    PlainLanguageInputs,
     Provenance,
     build_family_report,
     build_pair_report,
@@ -36,6 +37,7 @@ from metrology.reporting import (
     findings_pair_rows,
     iter_numeric_leaves,
     pair_card_json,
+    plain_language_finding,
     render_number,
 )
 
@@ -44,6 +46,23 @@ PROVENANCE = Provenance(
     pinned_revision="2f15350cd32becc4569e0d826361048555b605c0",
     fetch_date="2026-07-28",
     deviations=("D4 harness comparability",),
+)
+
+# A fixed, valid plain-language block for tests below that build a family card to exercise
+# something else (shape, verdict rejection, rendering) and are indifferent to its content.
+# family_card_json takes a completed block rather than building one (Step 4, D3.4), so every
+# caller must supply one; these tests do not exercise plain_language itself, so a constant
+# stub keeps the fixture noise out of tests that are about a different contract.
+PLAIN_LANGUAGE_STUB = plain_language_finding(
+    PlainLanguageInputs(
+        board_size=20,
+        family_size=19,
+        n_items=500,
+        distinguishable_count=0,
+        largest_lead=7,
+        opening_lead=10,
+        needs_per_instance_data=False,
+    )
 )
 
 
@@ -220,7 +239,8 @@ class TestFamilyCardJson:
         return family_card_json(
             build_family_report(
                 members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
-            )
+            ),
+            plain_language=PLAIN_LANGUAGE_STUB,
         )
 
     def test_family_card_carries_a_family_finding(self) -> None:
@@ -289,7 +309,8 @@ class TestSchemaGuards:
         card = family_card_json(
             build_family_report(
                 members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
-            )
+            ),
+            plain_language=PLAIN_LANGUAGE_STUB,
         )
         card["verdict"] = VERDICT_NOT_RESOLVED
 
@@ -303,7 +324,8 @@ class TestSchemaGuards:
         card = family_card_json(
             build_family_report(
                 members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
-            )
+            ),
+            plain_language=PLAIN_LANGUAGE_STUB,
         )
         card["family_finding"]["limit"]["inference"] = "NOT RESOLVED at any discordance"
 
@@ -576,7 +598,8 @@ class TestFamilyCardRequiredShape:
                 alpha=0.05,
                 provenance=PROVENANCE,
                 secondary_family_size=10,
-            )
+            ),
+            plain_language=PLAIN_LANGUAGE_STUB,
         )
 
     def test_conditionality_is_stated(self) -> None:
@@ -711,7 +734,8 @@ class TestSeparabilityLabelling:
                 alpha=0.05,
                 provenance=PROVENANCE,
                 secondary_family_size=10,
-            )
+            ),
+            plain_language=PLAIN_LANGUAGE_STUB,
         )
 
     def test_the_basis_of_separability_is_stated(self) -> None:
@@ -1320,3 +1344,114 @@ class TestPairDisplayLabel:
 
         with pytest.raises(ValueError, match="rank_"):
             pair_display_label(bad)
+
+
+class TestPlainLanguageFinding:
+    """The finding layer is engine-emitted so the crosswalk covers it (spec 10.1).
+
+    A presentation-layer implementation in report.py would satisfy D3.5 and forfeit
+    totality, leaving the most-read sentence in the document as the one part with weaker
+    guarantees than the table beneath it.
+    """
+
+    def inputs(self, **overrides):
+        from metrology.reporting import PlainLanguageInputs
+
+        base = dict(
+            board_size=20,
+            family_size=19,
+            n_items=500,
+            distinguishable_count=0,
+            largest_lead=7,
+            opening_lead=10,
+            needs_per_instance_data=False,
+        )
+        base.update(overrides)
+        return PlainLanguageInputs(**base)
+
+    def test_the_block_matches_the_approved_copy(self) -> None:
+        from metrology.reporting import plain_language_finding
+
+        block = plain_language_finding(self.inputs())
+        assert block["lead"] == (
+            "Using the statistical test chosen in advance, no neighboring top-20 pair "
+            "showed a reliable difference."
+        )
+        assert block["headline"] == {
+            "count": 0,
+            "of": 19,
+            "unit": "neighboring pairs",
+        }
+        assert block["scope"] == (
+            "The top 20 creates 19 neighboring comparisons, each measured on 500 tasks."
+        )
+        assert block["comparison"]["largest_lead"] == 7
+        assert block["comparison"]["opening_lead"] == 10
+
+    def test_every_field_is_required(self) -> None:
+        """No default and no fallback, so a missing source is a construction error
+        rather than a plausible substitution at render time."""
+        from metrology.reporting import PlainLanguageInputs
+
+        with pytest.raises(TypeError):
+            PlainLanguageInputs(board_size=20)
+
+    def test_the_board_size_and_the_family_size_are_not_interchangeable(self) -> None:
+        """aggregates:family_size is 20 and results:primary.family_size is 19. A swap
+        renders "top-19" and "0 of 20" with every number individually correct."""
+        from metrology.reporting import plain_language_finding
+
+        swapped = plain_language_finding(self.inputs(board_size=19, family_size=20))
+        assert "top-19" in swapped["lead"]
+        assert swapped["headline"]["of"] == 20
+        correct = plain_language_finding(self.inputs())
+        assert swapped["lead"] != correct["lead"]
+        assert swapped["scope"] != correct["scope"]
+
+    def test_the_analogy_is_necessary_not_sufficient(self) -> None:
+        """Clearing the mark is the point at which the question becomes answerable, not
+        a demonstration that a difference exists."""
+        from metrology.reporting import plain_language_finding
+
+        analogy = plain_language_finding(self.inputs())["analogy"]
+        assert "would not have settled a comparison on its own" in analogy
+        assert "No neighboring pair anywhere in the top 20 led by more than 7." in analogy
+
+    def test_the_task_level_note_requires_its_premise(self) -> None:
+        """The claim is conditional on this run, not a general truth. Without the gate the
+        rule would check only the 7 and the 10 and would certify the sentence on a run
+        whose headline did depend on per-instance work."""
+        from metrology.reporting import plain_language_finding
+
+        with pytest.raises(ValueError, match="needs_per_instance_data"):
+            plain_language_finding(self.inputs(needs_per_instance_data=True))
+
+    def test_the_non_claims_are_exact_and_ordered(self) -> None:
+        from metrology.reporting import plain_language_finding
+
+        assert plain_language_finding(self.inputs())["non_claims"] == [
+            "This does not show the systems are equivalent. Not finding a difference is "
+            "not the same as showing there is none, and this experiment registered no "
+            "equivalence test.",
+            "This does not cover systems that are not neighbors. Only neighboring pairs "
+            "were compared, so it says nothing about how rank 1 compares with rank 20.",
+        ]
+
+    def test_every_figure_has_a_declared_source_path(self) -> None:
+        """One table drives the rule and the rendering. Two copies would let the validated
+        path and the rendered path drift while both stayed individually correct."""
+        from metrology.reporting import PLAIN_LANGUAGE_SOURCES, plain_language_finding
+
+        block = plain_language_finding(self.inputs())
+        for leaf in (
+            "headline.count",
+            "headline.of",
+            "comparison.largest_lead",
+            "comparison.opening_lead",
+        ):
+            assert leaf in PLAIN_LANGUAGE_SOURCES
+        assert PLAIN_LANGUAGE_SOURCES["headline.count"] == (
+            "results:primary.headline.distinguishable_count"
+        )
+        assert PLAIN_LANGUAGE_SOURCES["headline.of"] == "results:primary.family_size"
+        assert block["headline"]["count"] == 0

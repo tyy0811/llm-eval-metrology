@@ -42,12 +42,14 @@ from metrology.paired import (  # noqa: E402
 from metrology.power import mde_paired_binary  # noqa: E402
 from metrology.reporting import (  # noqa: E402
     PairCounts,
+    PlainLanguageInputs,
     Provenance,
     adjacent_pairs,
     build_family_report,
     family_card_json,
     illustrative_pair_names,
     pair_card_json,
+    plain_language_finding,
     require_canonical_date,
     validate_card,
 )
@@ -514,8 +516,20 @@ def main(argv: list[str] | None = None) -> int:
     payload = json.dumps(results, indent=2, sort_keys=True) + "\n"
     (RESULTS / "results.json").write_text(payload, encoding="utf-8")
 
+    plain_language = plain_language_finding(
+        PlainLanguageInputs(
+            board_size=aggregates["family_size"],
+            family_size=results["primary"]["family_size"],
+            n_items=aggregates["n_items"],
+            distinguishable_count=results["primary"]["headline"]["distinguishable_count"],
+            largest_lead=results["primary"]["largest_observed_gap"],
+            opening_lead=results["primary"]["first_rejection_gap_floor"],
+            needs_per_instance_data=results["primary"]["needs_per_instance_data"],
+        )
+    )
+
     cards = {
-        "family": family_card_json(family),
+        "family": family_card_json(family, plain_language=plain_language),
         "pairs": {
             name: illustrative_card(family, entries, name)
             for name in illustrative_pair_names(entries)

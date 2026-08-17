@@ -559,8 +559,120 @@ def pair_card_json(report: PairReport) -> dict:
     }
 
 
-def family_card_json(report: FamilyReport) -> dict:
-    """Card JSON for a family. Carries a `family_finding` and **no** `verdict`, per D1.9."""
+# --- The plain-language finding layer (T3.4 spec section 10) --------------------------
+#
+# Engine-emitted so the crosswalk covers it. Every figure has a declared source path, and
+# that one mapping drives both the validator's rules and the renderer's render_number
+# calls, so the validated path and the rendered path cannot drift.
+
+PLAIN_LANGUAGE_SOURCES = {
+    "headline.count": "results:primary.headline.distinguishable_count",
+    "headline.of": "results:primary.family_size",
+    "comparison.largest_lead": "results:primary.largest_observed_gap",
+    "comparison.opening_lead": "results:primary.first_rejection_gap_floor",
+}
+
+_LEAD = (
+    "Using the statistical test chosen in advance, no neighboring top-{board_size} pair "
+    "showed a reliable difference."
+)
+_SCOPE = (
+    "The top {board_size} creates {family_size} neighboring comparisons, each measured "
+    "on {n_items} tasks."
+)
+_ANALOGY = (
+    "It works like a qualifying mark. Before a difference between two neighboring "
+    "systems could count as reliable, that pair needed a lead of at least {opening_lead} "
+    "tasks. No neighboring pair anywhere in the top {board_size} led by more than "
+    "{largest_lead}. None reached the mark, so none could qualify. Reaching the mark "
+    "would not have settled a comparison on its own; it is the point at which the "
+    "question becomes answerable at all."
+)
+_TASK_LEVEL_NOTE = (
+    "Task-by-task results add detail but cannot change this. A pair's lead sets a ceiling "
+    "on how strong its evidence can get, and a lead of {largest_lead} stays under the "
+    "mark even if every task the two systems disagreed on had gone the same way. The "
+    "headline follows from the published totals alone."
+)
+_NON_CLAIMS = [
+    "This does not show the systems are equivalent. Not finding a difference is not the "
+    "same as showing there is none, and this experiment registered no equivalence test.",
+    "This does not cover systems that are not neighbors. Only neighboring pairs were "
+    "compared, so it says nothing about how rank 1 compares with rank 20.",
+]
+
+
+@dataclass(frozen=True)
+class PlainLanguageInputs:
+    """The registered quantities the finding layer needs, read by run.py.
+
+    Every field is required. FamilyReport carries none of the first three, and its
+    nearest substitute for distinguishable_count is resolved_count, which is numerically
+    equal today and is exactly the substitution D3.4 forbids. A typed record with no
+    defaults makes a missing source a construction error rather than a plausible
+    substitution at render time.
+    """
+
+    board_size: int
+    family_size: int
+    n_items: int
+    distinguishable_count: int
+    largest_lead: int
+    opening_lead: int
+    needs_per_instance_data: bool
+
+
+def plain_language_finding(inputs: PlainLanguageInputs) -> dict:
+    """The finding layer, as a pure function of the registered quantities."""
+    if inputs.needs_per_instance_data:
+        raise ValueError(
+            "needs_per_instance_data is true, so the task-level note's premise does not "
+            "hold and the finding layer must not claim the headline follows from the "
+            "published totals alone"
+        )
+    fields = {
+        "board_size": inputs.board_size,
+        "family_size": inputs.family_size,
+        "n_items": inputs.n_items,
+        "largest_lead": inputs.largest_lead,
+        "opening_lead": inputs.opening_lead,
+    }
+    return {
+        "lead": _LEAD.format(**fields),
+        "lead_basis": ("distinguishable_count, the observed test at the registered correction"),
+        "headline": {
+            "count": inputs.distinguishable_count,
+            "of": inputs.family_size,
+            "unit": "neighboring pairs",
+        },
+        "scope": _SCOPE.format(**fields),
+        "comparison": {
+            "largest_lead": inputs.largest_lead,
+            "opening_lead": inputs.opening_lead,
+            "unit": "tasks",
+            "largest_lead_label": "largest lead",
+            "opening_lead_label": "minimum opening lead",
+        },
+        "analogy": _ANALOGY.format(**fields),
+        "task_level_note": _TASK_LEVEL_NOTE.format(**fields),
+        "task_level_basis": (
+            "derived from published aggregates alone; per-instance work characterizes the "
+            "count and cannot overturn it"
+        ),
+        "non_claims": list(_NON_CLAIMS),
+    }
+
+
+def family_card_json(report: FamilyReport, *, plain_language: dict) -> dict:
+    """Card JSON for a family. Carries a `family_finding` and **no** `verdict`, per D1.9.
+
+    `plain_language` arrives as a completed block built by `plain_language_finding` and is
+    embedded verbatim; this function neither builds one nor reads a file. `FamilyReport`
+    carries neither the board size nor the task count the block needs, and its nearest
+    available substitute for the headline count is `resolved_count`, which is numerically
+    equal to `distinguishable_count` today and is exactly the substitution D3.4 forbids. A
+    completed block passed in has nowhere for that substitution to happen.
+    """
     inference = (
         f"{report.separable_count} of {report.n_tests} pairs could reject under best-case "
         f"overlaps; the family gateway floor is {report.first_rejection_gap_floor} and the "
@@ -624,6 +736,7 @@ def family_card_json(report: FamilyReport) -> dict:
             "secondary_family_size": report.secondary_family_size,
             "secondary_family_floor": report.secondary_gap_floor,
         },
+        "plain_language": plain_language,
     }
     return {
         "card_kind": CARD_FAMILY,
