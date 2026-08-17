@@ -2546,6 +2546,34 @@ class TestRenderPairTable:
         )
 
 
+def _replace_string_leaves(value, payload):
+    """Recursively replace every string leaf of a JSON-like structure with payload.
+
+    Used to build a hostile plain-language block without naming a single field: whatever the
+    block contains, at whatever nesting, becomes the payload if it is a string, and is left
+    alone otherwise (an int stays an int, since the four figures are guarded separately by
+    forcing them through render_number's typed formatter rather than by escaping). A field
+    added to plain_language_finding's output later is covered by this walk the moment it
+    exists in the block a test hands it, with no list of key names to remember to extend.
+    """
+    if isinstance(value, dict):
+        return {key: _replace_string_leaves(v, payload) for key, v in value.items()}
+    if isinstance(value, list):
+        return [_replace_string_leaves(v, payload) for v in value]
+    if isinstance(value, str):
+        return payload
+    return value
+
+
+def _resolve_leaf(block: dict, dotted_leaf: str):
+    """Resolve a PLAIN_LANGUAGE_SOURCES leaf name such as "comparison.largest_lead" against
+    the block that is supposed to carry it."""
+    node = block
+    for part in dotted_leaf.split("."):
+        node = node[part]
+    return node
+
+
 class TestRenderPlainLanguageFinding:
     """Spec 10.4. Every figure prints through render_number at its declared path, and
     the renderer reads the same PLAIN_LANGUAGE_SOURCES mapping the validator does, so
@@ -2579,6 +2607,11 @@ class TestRenderPlainLanguageFinding:
         and matches no \\bd\\d, so a word list alone approves it. The corpus's own roster of
         system identifiers is the thing to check against, not a spelling this test would have
         to keep inventing: a system added or renamed on the board is covered automatically.
+
+        The system check compares case-folded against case-folded, the same as the word ban
+        just above it: comparing a system identifier against `rendered` verbatim, while the
+        word ban already lowercases, would miss a case-folded rendering of that identifier
+        that the word ban's own lowering would still catch for a banned word.
         """
         from metrology.cards import render_plain_language_finding
 
@@ -2592,7 +2625,7 @@ class TestRenderPlainLanguageFinding:
         systems = [entry["system"] for entry in aggregates["entries"]]
         assert systems, "no systems found in the aggregates corpus"
         for system in systems:
-            assert system not in rendered, system
+            assert system.lower() not in lowered, system
 
     def test_it_carries_the_approved_lead_and_non_claims(self) -> None:
         from metrology.cards import render_plain_language_finding
@@ -2622,58 +2655,69 @@ class TestRenderPlainLanguageFinding:
         full is-mark row reads "largest lead / 7 tasks", leaves every strip_flex assertion
         above passing while drawing the mirror image of the same defect, the labels lying
         about which bar is which. Each row's own legend text is checked against that row.
+
+        Every expected number and label below is read from block()'s own comparison dict
+        at test time rather than pinned as a literal 7, 10, or a copied label string: a
+        literal that happens to equal today's fixture values could stay green after this
+        method's block() changed largest_lead or opening_lead, or after the copy in
+        reporting.py's _LEAD label constants changed, passing for a reason unrelated to
+        whether the renderer still binds each row correctly.
         """
         from metrology.cards import render_plain_language_finding
 
-        rendered = render_plain_language_finding(self.block())
+        block = self.block()
+        comparison = block["comparison"]
+        lead, mark = comparison["largest_lead"], comparison["opening_lead"]
+        shortfall = mark - lead
+
+        rendered = render_plain_language_finding(block)
         rows = lead_scale_rows(rendered)
         assert [modifier for modifier, _ in rows] == ["is-observed", "is-mark"]
         observed, marked = rows[0][1], rows[1][1]
 
-        assert strip_flex(observed, "a") == 7
-        assert strip_flex(observed, "b") == 3
-        assert strip_flex(marked, "a") == 10
+        assert strip_flex(observed, "a") == lead
+        assert strip_flex(observed, "b") == shortfall
+        assert strip_flex(marked, "a") == mark
         assert strip_flex(marked, "b") is None, "the mark row must fill its track"
 
-        assert "<span>largest lead</span><span>7 tasks</span>" in observed
-        assert "<span>minimum opening lead</span><span>10 tasks</span>" in marked
+        assert (
+            f"<span>{comparison['largest_lead_label']}</span>"
+            f"<span>{lead} {comparison['unit']}</span>"
+        ) in observed
+        assert (
+            f"<span>{comparison['opening_lead_label']}</span>"
+            f"<span>{mark} {comparison['unit']}</span>"
+        ) in marked
 
-    def test_every_string_field_is_escaped(self) -> None:
-        """Mutating only block["lead"] guards 1 of the 9 string-typed fields the caller
-        supplies (lead, scope, headline.unit, comparison.unit, both comparison labels,
-        analogy, task_level_note, and the non_claims entries). Dropping escape() from any
-        of the other 8 left every test green and the snapshot byte-identical, because none
-        of those strings happened to contain a character escape() touches: block["scope"]
-        set to a script payload rendered a live tag, and so did a non_claims entry (a
-        working `<img src=x onerror=...>` renders exactly as readily as a `<script>` tag).
+    def test_every_string_leaf_is_escaped_however_the_block_is_shaped(self) -> None:
+        """This test's predecessor named nine dict keys by hand (lead, scope, headline.unit,
+        comparison.unit, both comparison labels, analogy, task_level_note, non_claims). A
+        later reviewer found the gap that a name list always has: add a caller-supplied
+        "caveat" field, read and interpolated unescaped by the renderer, and the named-list
+        test has no way to know the key exists, so it stays green while a script payload in
+        caveat renders live. This project's own founding habit is to enumerate from the
+        artifact rather than from memory, and self.block() is the artifact.
 
-        Every string field the block carries is set to the same payload in one call, the
-        same pattern TestRenderPairTable.test_every_field_is_escaped uses for the table: with
-        one shared payload, "<script>" not in rendered is total by construction rather than
-        an enumeration, since any one of the fields landing unescaped reintroduces the raw
-        substring somewhere in the fragment.
+        _replace_string_leaves walks self.block() itself and turns every string leaf, at
+        whatever key and whatever nesting, into the same payload, so a field added to
+        plain_language_finding's output later is covered by this test the moment it exists,
+        without this file being edited to name it. "<script>" not in rendered is then total
+        by construction: any one string leaf landing unescaped reintroduces the raw payload
+        somewhere in the fragment, exactly as
+        TestRenderPairTable.test_every_field_is_escaped already holds for the table.
 
-        The four numeric fields (headline.count, headline.of, comparison.largest_lead,
-        comparison.opening_lead) are excluded here on purpose: they are forced through
-        render_number's "int" formatter, which raises TypeError on a non-int before any
-        interpolation happens (see test_figures_are_printed_through_render_number), so a
-        string payload there is a different failure mode, not a silent unescaped render.
+        The four numeric leaves are untouched by the walk (it only replaces strings), and
+        stay excluded here on purpose: they are forced through render_number's "int"
+        formatter, which raises TypeError on a non-int before any interpolation happens (see
+        test_figures_are_printed_through_render_number), a different failure mode from a
+        silent unescaped render.
         """
         from metrology.cards import render_plain_language_finding
 
         payload = "<script>alert(1)</script>"
-        block = self.block()
-        block["lead"] = payload
-        block["scope"] = payload
-        block["analogy"] = payload
-        block["task_level_note"] = payload
-        block["headline"]["unit"] = payload
-        block["comparison"]["unit"] = payload
-        block["comparison"]["largest_lead_label"] = payload
-        block["comparison"]["opening_lead_label"] = payload
-        block["non_claims"] = [payload, payload]
+        hostile = _replace_string_leaves(self.block(), payload)
 
-        rendered = render_plain_language_finding(block)
+        rendered = render_plain_language_finding(hostile)
         assert "<script>" not in rendered
         assert "&lt;script&gt;" in rendered
 
@@ -2685,6 +2729,30 @@ class TestRenderPlainLanguageFinding:
         plain_language_finding actually returns, because all four declared paths format as
         plain integers today, and every other test in this class stays green under that
         mutation. The coupling itself was untested.
+
+        This method's predecessor hardcoded the four leaf names ("headline.count" and so
+        on) to build the expected call set, which is complete only because
+        PLAIN_LANGUAGE_SOURCES happens to have exactly four entries today: a fifth figure
+        added later that never calls render_number would leave set(calls) exactly equal to
+        the same four hardcoded pairs, the assertion would still hold, and the new figure's
+        formatting would be unguarded, the same failure mode this test exists to catch,
+        moved one field over. expected is built by iterating
+        PLAIN_LANGUAGE_SOURCES.items() instead, so a leaf added to the mapping is expected
+        automatically rather than needing a fifth literal added here; _resolve_leaf reads
+        the matching value out of the block itself rather than a hardcoded lookup path.
+
+        (A stricter form was tried first: capture every digit run in the rendered output and
+        require each to be accounted for by a recorded call's return value. It does not hold
+        even for correct, unmutated output, because most of the fragment's digits, board_size
+        and n_items in the lead/scope/analogy text, and largest_lead and opening_lead again
+        inside the analogy and task_level_note prose, are baked into block["lead"] etc. by
+        plain_language_finding in reporting.py before this renderer ever sees them; this
+        renderer only escapes and places that prose, it does not format those numbers, so
+        they are correctly outside any render_number call this function makes. Full-output
+        digit extraction also picks up non-numeral noise, "27" out of the "&#x27;" apostrophe
+        entity in "pair's", that has nothing to do with any figure at all. Both make the
+        digit-totality form fail on already-correct code, so this falls back to the
+        mapping-derived form the review allowed.)
 
         metrology.cards.render_number is replaced with a sentinel that records every call
         and returns a distinguishable string, so this proves both that the module-level
@@ -2706,16 +2774,7 @@ class TestRenderPlainLanguageFinding:
         rendered = render_plain_language_finding(block)
 
         expected = {
-            (PLAIN_LANGUAGE_SOURCES["headline.count"], block["headline"]["count"]),
-            (PLAIN_LANGUAGE_SOURCES["headline.of"], block["headline"]["of"]),
-            (
-                PLAIN_LANGUAGE_SOURCES["comparison.largest_lead"],
-                block["comparison"]["largest_lead"],
-            ),
-            (
-                PLAIN_LANGUAGE_SOURCES["comparison.opening_lead"],
-                block["comparison"]["opening_lead"],
-            ),
+            (path, _resolve_leaf(block, leaf)) for leaf, path in PLAIN_LANGUAGE_SOURCES.items()
         }
         assert set(calls) == expected
         for path, value in expected:
