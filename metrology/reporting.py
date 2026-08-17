@@ -625,14 +625,11 @@ class PlainLanguageInputs:
 def plain_language_finding(inputs: PlainLanguageInputs) -> dict:
     """The finding layer, as a pure function of the registered quantities.
 
-    Three premises gate the copy, one per place the fixed text asserts something the
-    numbers alone do not guarantee. `_LEAD` hardcodes "no neighboring pair showed a
-    reliable difference" and never reads `distinguishable_count`; `_ANALOGY` hardcodes
-    "None reached the mark, so none could qualify" and never compares `largest_lead`
-    against `opening_lead`; `_TASK_LEVEL_NOTE` hardcodes "the headline follows from the
-    published totals alone", gated by `needs_per_instance_data` below. Skipping any one
-    of the three would certify a sentence a run's own numbers, three keys away or inside
-    the same string, directly contradict.
+    Every run-specific claim the copy makes is checked before the block is built, rather
+    than trusted, so the check enumerates claims rather than a fixed count of them: a
+    fifth premise added to the copy later needs a fifth gate here, not a comment update.
+    A missing gate would certify a sentence the run's own numbers, elsewhere in the same
+    block or inside the same string, directly contradict.
     """
     if inputs.distinguishable_count != 0:
         raise ValueError(
@@ -645,6 +642,14 @@ def plain_language_finding(inputs: PlainLanguageInputs) -> dict:
             "largest_lead has reached or passed opening_lead, so the analogy's claim "
             "that no neighboring pair reached the mark does not hold; rendering it "
             "would contradict itself inside one string"
+        )
+    if inputs.board_size != inputs.family_size + 1:
+        raise ValueError(
+            f"board_size ({inputs.board_size}) is not family_size ({inputs.family_size}) "
+            "plus one, so the scope's claim that the top board_size creates family_size "
+            "neighboring comparisons does not hold; N ranked systems produce N-1 "
+            "adjacent pairs, and the same board_size phrasing also appears in the lead "
+            "and the analogy"
         )
     if inputs.needs_per_instance_data:
         raise ValueError(

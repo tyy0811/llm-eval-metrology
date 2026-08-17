@@ -1406,16 +1406,27 @@ class TestPlainLanguageFinding:
             PlainLanguageInputs(board_size=20)
 
     def test_the_board_size_and_the_family_size_are_not_interchangeable(self) -> None:
-        """aggregates:family_size is 20 and results:primary.family_size is 19. A swap
-        renders "top-19" and "0 of 20" with every number individually correct."""
+        """aggregates:family_size is 20 and results:primary.family_size is 19. Swapping
+        them directly is now rejected by the board_size-equals-family_size-plus-one gate
+        (fix round 2), a stronger guarantee than "still renders, but differently". That
+        gate alone is not the whole story, though: it only looks at the two raw inputs
+        together, so a fully conflated implementation, one that quietly read a single
+        "size" into both the "top-N" slot and the "of" slot, would still satisfy it on
+        any single self-consistent pair. A second, genuinely different valid pair checks
+        the actual rendered content for exactly that, which the invariant gate cannot see
+        by itself.
+        """
         from metrology.reporting import plain_language_finding
 
-        swapped = plain_language_finding(self.inputs(board_size=19, family_size=20))
-        assert "top-19" in swapped["lead"]
-        assert swapped["headline"]["of"] == 20
+        with pytest.raises(ValueError, match="board_size"):
+            plain_language_finding(self.inputs(board_size=19, family_size=20))
+
+        other = plain_language_finding(self.inputs(board_size=4, family_size=3))
+        assert "top-4" in other["lead"]
+        assert other["headline"]["of"] == 3
         correct = plain_language_finding(self.inputs())
-        assert swapped["lead"] != correct["lead"]
-        assert swapped["scope"] != correct["scope"]
+        assert other["lead"] != correct["lead"]
+        assert other["scope"] != correct["scope"]
 
     def test_the_analogy_is_necessary_not_sufficient(self) -> None:
         """Clearing the mark is the point at which the question becomes answerable, not
@@ -1462,6 +1473,20 @@ class TestPlainLanguageFinding:
 
         with pytest.raises(ValueError, match="largest_lead"):
             plain_language_finding(self.inputs(largest_lead=10, opening_lead=10))
+
+    def test_the_scope_premise_requires_board_size_to_be_family_size_plus_one(self) -> None:
+        """ "The top {board_size} creates {family_size} neighboring comparisons" asserts
+        N ranked systems produce N-1 adjacent pairs, a domain invariant that holds under
+        the coverage rule too (a substitution replaces an entry rather than removing
+        one). Both inputs arrive together in the same call, so the function cannot know
+        which one is wrong, but it can know they cannot both be right. Without this gate,
+        board_size=25 with family_size=19 renders "top-25" in the lead and the analogy
+        and "creates 19" in the scope: top 25 implies 24 comparisons, not 19, and the
+        same board_size phrasing corrupts three sentences at once."""
+        from metrology.reporting import plain_language_finding
+
+        with pytest.raises(ValueError, match="board_size"):
+            plain_language_finding(self.inputs(board_size=25, family_size=19))
 
     def test_the_non_claims_are_exact_and_ordered(self) -> None:
         from metrology.reporting import plain_language_finding
