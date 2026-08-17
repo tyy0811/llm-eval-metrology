@@ -20,6 +20,7 @@ import pytest
 
 from metrology.cards import (
     CARD_STYLESHEET,
+    html_id,
     render_card,
     render_document,
     ruler_marker_class,
@@ -133,8 +134,12 @@ class TestEdgeSafeMarkers:
     def test_zero_discordance_does_not_divide_by_zero(self) -> None:
         family = build_family_report(
             [
-                PairCounts(name="agree", system_a="a", system_b="b", n01=0, n10=0, n_items=500),
-                PairCounts(name="other", system_a="c", system_b="d", n01=5, n10=5, n_items=500),
+                PairCounts(
+                    name="rank_1_vs_2", system_a="a", system_b="b", n01=0, n10=0, n_items=500
+                ),
+                PairCounts(
+                    name="rank_2_vs_3", system_a="c", system_b="d", n01=5, n10=5, n_items=500
+                ),
             ],
             instrument="hidden-tests",
             alpha=0.05,
@@ -165,7 +170,7 @@ class TestRendererContract:
         family = build_family_report(
             [
                 PairCounts(
-                    name="injection",
+                    name="rank_1_vs_2",
                     system_a="<script>alert(1)</script>",
                     system_b="safe",
                     n01=1,
@@ -301,7 +306,11 @@ class TestValidationCoversEveryRenderedField:
 class TestReversedPairs:
     def reversed_pair(self):
         family = build_family_report(
-            [PairCounts(name="rev", system_a="a", system_b="b", n01=25, n10=18, n_items=500)],
+            [
+                PairCounts(
+                    name="rank_1_vs_2", system_a="a", system_b="b", n01=25, n10=18, n_items=500
+                )
+            ],
             instrument="hidden-tests",
             alpha=0.05,
             provenance=PROVENANCE,
@@ -332,7 +341,11 @@ class TestReversedPairs:
 class TestVerdictDispatch:
     def resolved_pair(self):
         family = build_family_report(
-            [PairCounts(name="wide", system_a="a", system_b="b", n01=0, n10=40, n_items=500)],
+            [
+                PairCounts(
+                    name="rank_1_vs_2", system_a="a", system_b="b", n01=0, n10=40, n_items=500
+                )
+            ],
             instrument="hidden-tests",
             alpha=0.05,
             provenance=PROVENANCE,
@@ -365,37 +378,27 @@ class TestVerdictDispatch:
 
 
 class TestIdSafety:
-    def named(self, name: str):
-        family = build_family_report(
-            [PairCounts(name=name, system_a="a", system_b="b", n01=1, n10=2, n_items=500)],
-            instrument="hidden-tests",
-            alpha=0.05,
-            provenance=PROVENANCE,
-        )
-        return pair_card_json(family.members[0])
+    """html_id must produce a safe, deterministic, distinguishing id for any name.
+
+    Exercised directly rather than through render_card. render_pair_card now runs
+    comparison["name"] through pair_display_label first (T3.4 task 4), which rejects
+    anything outside the canonical rank_<a>_vs_<b> shape, so a whitespace-and-punctuation
+    name can no longer reach html_id by way of a full pair card. html_id's own contract is
+    unchanged: it is a general id-safety helper and every name produced by the real pipeline
+    is canonical, but the function itself still has to tolerate arbitrary text.
+    """
 
     @pytest.mark.parametrize(
         "name", ["rank 3 vs rank 4", "a/b: c", "with.dots", "unicode name", "tabs\tand spaces"]
     )
     def test_ids_contain_no_whitespace_or_punctuation(self, name: str) -> None:
-        import re
-
-        rendered = render_card(self.named(name))
-        referenced = re.search(r'aria-labelledby="([^"]+)"', rendered).group(1)
-
-        assert re.fullmatch(r"[A-Za-z0-9_-]+", referenced), referenced
-        assert f'id="{referenced}"' in rendered
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", html_id(name)), html_id(name)
 
     def test_ids_are_deterministic(self) -> None:
-        assert render_card(self.named("rank 3 vs 4")) == render_card(self.named("rank 3 vs 4"))
+        assert html_id("rank 3 vs 4") == html_id("rank 3 vs 4")
 
     def test_different_names_get_different_ids(self) -> None:
-        import re
-
-        first = re.search(r'aria-labelledby="([^"]+)"', render_card(self.named("a b"))).group(1)
-        second = re.search(r'aria-labelledby="([^"]+)"', render_card(self.named("a-b"))).group(1)
-
-        assert first != second
+        assert html_id("a b") != html_id("a-b")
 
 
 class TestSeparableDefinitionPrefix:
@@ -534,7 +537,7 @@ class TestDecisionRuleDispatch:
         from metrology.reporting import build_pair_report
 
         standalone = build_pair_report(
-            PairCounts(name="solo", system_a="a", system_b="b", n01=0, n10=40, n_items=500),
+            PairCounts(name="rank_1_vs_2", system_a="a", system_b="b", n01=0, n10=40, n_items=500),
             instrument="hidden-tests",
             threshold=0.05,
             provenance=PROVENANCE,
@@ -1165,17 +1168,17 @@ def apparatus_span(text: str) -> tuple[int, int]:
 def rendered_card_fragments() -> dict[str, str]:
     """The two card fragments the apparatus quotes, exactly as the renderer emits them.
 
-    The pair card carries contract item 7's human label, which is the one edit the reference makes
-    to renderer output. Built once and shared, so the excision below and the fragment-equality
-    tests cannot disagree about what counts as renderer output.
+    The pair card carries contract item 7's human label. That used to be an edit this helper made
+    to renderer output by hand, back when render_pair_card still emitted the raw identifier
+    (T3.4 task 4 built pair_display_label and wired it in, so the renderer produces the human
+    label itself now and no substitution is needed here). Built once and shared, so the excision
+    below and the fragment-equality tests cannot disagree about what counts as renderer output.
     """
     cards = json.loads(CORPUS_FILES["cards"].read_text(encoding="utf-8"))
     pair = render_card(cards["pairs"]["rank_3_vs_4"])
-    relabelled = pair.replace("Pair verdict: rank_3_vs_4", "Pair verdict: Ranks 3 and 4")
-    assert relabelled != pair, "the renderer no longer emits the raw identifier"
     return {
         "family": textwrap.indent(render_card(cards["family"]), "    "),
-        "pair": textwrap.indent(relabelled, "    "),
+        "pair": textwrap.indent(pair, "    "),
     }
 
 
@@ -2226,3 +2229,29 @@ class TestPageReference:
         assert re.search(r"\b(rgba?|hsla?)\(", rules) is None
         named = r"white|black|grey|gray|red|green|blue|orange|yellow|silver|teal|navy"
         assert re.search(rf"(?<![-\w])({named})(?![-\w])", rules) is None
+
+
+class TestPrecisionRoundTrips:
+    """A figure printed by a helper named _precise must survive float().
+
+    _precise was f"{value:.15g}", which renders results:primary.first_critical as
+    0.00263157894736842 against a stored 0.002631578947368421. The printed threshold was
+    not the threshold the test used, on a page whose subject is measurement.
+    """
+
+    def test_the_first_critical_value_round_trips(self) -> None:
+        import json
+
+        from metrology.cards import _precise
+
+        results = json.loads(
+            (REPO_ROOT / "experiments/swebench/results/results.json").read_text(encoding="utf-8")
+        )
+        stored = results["primary"]["first_critical"]
+        assert float(_precise(stored)) == stored
+
+    def test_it_round_trips_for_values_needing_seventeen_digits(self) -> None:
+        from metrology.cards import _precise
+
+        for value in (0.002631578947368421, 0.1 + 0.2, 1 / 3, 2**-40):
+            assert float(_precise(value)) == value

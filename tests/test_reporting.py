@@ -1288,3 +1288,28 @@ class TestSharedSelectionRule:
             encoding="utf-8"
         )
         assert source.count('"exact_mcnemar_two_sided"') == 1
+
+
+class TestPairDisplayLabel:
+    """The first human-readable reading of a pair must not be its machine identifier.
+
+    render_pair_card emitted `label = escape(comparison["name"])`, so the heading read
+    "Pair verdict: rank_3_vs_4". The "rank 3 against rank 4" wording in
+    fixtures/verdict_reference.html was aspirational fixture prose that no renderer ever
+    produced, which is why this conversion has to be built rather than wired up.
+    """
+
+    def test_it_reads_as_ranks(self) -> None:
+        from metrology.reporting import pair_display_label
+
+        assert pair_display_label("rank_3_vs_4") == "Ranks 3 and 4"
+        assert pair_display_label("rank_1_vs_2") == "Ranks 1 and 2"
+        assert pair_display_label("rank_16_vs_17") == "Ranks 16 and 17"
+
+    def test_it_refuses_anything_outside_the_registered_shape(self) -> None:
+        """A silent passthrough would put the identifier back with no test failing."""
+        from metrology.reporting import pair_display_label
+
+        for bad in ("rank_3_vs_", "rank_a_vs_b", "3_vs_4", "", "Ranks 3 and 4", "rank_3"):
+            with pytest.raises(ValueError, match="rank_"):
+                pair_display_label(bad)

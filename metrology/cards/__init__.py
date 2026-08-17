@@ -20,7 +20,7 @@ import re
 from html import escape
 from pathlib import Path
 
-from ..reporting import CARD_FAMILY, CARD_PAIR, validate_card
+from ..reporting import CARD_FAMILY, CARD_PAIR, pair_display_label, validate_card
 
 #: The approved stylesheet, kept in `card.css` as a single source of truth rather than inlined
 #: here, so it is not squeezed into a Python line-length budget. A test asserts it agrees with
@@ -59,7 +59,13 @@ def _num(value: float, places: int) -> str:
 
 
 def _precise(value: float) -> str:
-    return f"{value:.15g}"
+    """Repr-grade precision, so a printed figure round-trips to the value it came from.
+
+    .15g drops the seventeenth significant digit, which made the printed first critical
+    value differ from the stored one. repr gives the shortest string that float() returns
+    to the same double.
+    """
+    return repr(float(value))
 
 
 def _marker(edge: int, total: int, label: str, kind: str) -> str:
@@ -148,7 +154,7 @@ def render_pair_card(card: dict) -> str:
     favour_a, favour_b = ruler["split"]
     edge = abs(ruler["observed_net_edge"])
     slug = html_id(comparison["name"])
-    label = escape(comparison["name"])
+    label = escape(pair_display_label(comparison["name"]))
 
     # EQUIVALENT is refused by validate_card above, with the TOST message, so only the two
     # renderable verdicts reach here.

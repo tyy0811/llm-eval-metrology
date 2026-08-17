@@ -33,6 +33,7 @@ parameter to pass the wrong thing to.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from datetime import date
 
@@ -101,6 +102,21 @@ def illustrative_pair_names(entries: list[dict]) -> list[str]:
     widest = max(range(len(gaps)), key=lambda index: (gaps[index], -index))
     chosen = [0, widest] if widest != 0 else [0]
     return [f"rank_{pairs[i][0]['rank']}_vs_{pairs[i][1]['rank']}" for i in chosen]
+
+
+_PAIR_NAME = re.compile(r"^rank_(\d+)_vs_(\d+)$")
+
+
+def pair_display_label(name: str) -> str:
+    """The human reading of a pair name: rank_3_vs_4 becomes "Ranks 3 and 4".
+
+    Raises rather than passing an unrecognized name through, because a silent passthrough
+    would reintroduce the machine identifier this exists to remove, with nothing failing.
+    """
+    match = _PAIR_NAME.fullmatch(name)
+    if match is None:
+        raise ValueError(f"pair name must match rank_<a>_vs_<b>, got {name!r}")
+    return f"Ranks {match.group(1)} and {match.group(2)}"
 
 
 def _require_text(value: object, name: str) -> str:
