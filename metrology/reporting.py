@@ -1481,3 +1481,458 @@ def _reject_verdict_strings(node: object, path: str = "family_finding") -> None:
     elif isinstance(node, (list, tuple)):
         for index, value in enumerate(node):
             _reject_verdict_strings(value, f"{path}[{index}]")
+
+
+# --- The card crosswalk (T3.4 spec section 3) ---------------------------------------
+#
+# cards.json is a validated intermediate artifact. Every leaf maps to exactly one rule,
+# and enforcement is bidirectional: an unmapped leaf fails and a rule with no leaf
+# fails. The leaf walk emits empty objects and lists as leaves, so an unknown empty
+# container cannot slip past a scalar-only walk.
+
+SOURCE, CONSTANT, TEMPLATE, DERIVED = "source", "constant", "template", "derived"
+
+_INFERENCE_SEPARABLE = (
+    "{separable_count} of {family_size} pairs could reject under best-case overlaps; "
+    "the family gateway floor is {first_rejection_gap_floor} and the largest observed "
+    "gap is {largest_observed_gap}"
+)
+_INFERENCE_NONE = (
+    "every adjacent gap sits below the gateway floor of {first_rejection_gap_floor}, "
+    "so no pair can open the family and none can separate at any discordance "
+    "configuration"
+)
+
+
+def _card_leaves(node, prefix=""):
+    """Every leaf, with empty containers counted as leaves in their own right."""
+    if isinstance(node, dict):
+        if not node:
+            yield prefix, {}
+            return
+        for key, value in node.items():
+            yield from _card_leaves(value, f"{prefix}.{key}" if prefix else key)
+    elif isinstance(node, list):
+        if not node:
+            yield prefix, []
+            return
+        for index, value in enumerate(node):
+            yield from _card_leaves(value, f"{prefix}[{index}]")
+    else:
+        yield prefix, node
+
+
+def _exact(actual, expected, path: str) -> None:
+    if type(actual) is not type(expected):
+        raise ValueError(
+            f"{path}: type {type(actual).__name__} does not match source type "
+            f"{type(expected).__name__} (value {actual!r} against {expected!r})"
+        )
+    if actual != expected:
+        raise ValueError(f"{path}: {actual!r} does not match its source {expected!r}")
+
+
+def _dig(document: dict, dotted: str):
+    node = document
+    for part in dotted.split("."):
+        node = node[part]
+    return node
+
+
+def _apply(rules: dict, card: dict, context: dict, label: str) -> None:
+    leaves = dict(_card_leaves(card))
+    unmapped = sorted(set(leaves) - set(rules))
+    if unmapped:
+        raise ValueError(f"{label}: no rule for {unmapped}")
+    dead = sorted(set(rules) - set(leaves))
+    if dead:
+        raise ValueError(f"{label}: rule with no matching card path: {dead}")
+    for path, (kind, spec) in rules.items():
+        actual = leaves[path]
+        if kind is SOURCE:
+            document, dotted = spec.split(":", 1)
+            _exact(actual, _dig(context[document], dotted), f"{label}.{path}")
+        elif kind in (CONSTANT, DERIVED):
+            _exact(actual, spec, f"{label}.{path}")
+        elif kind is TEMPLATE:
+            template, fields = spec
+            expected = template.format(
+                **{
+                    name: render_number(
+                        source, _dig(context[source.split(":", 1)[0]], source.split(":", 1)[1])
+                    )
+                    for name, source in fields.items()
+                }
+            )
+            _exact(actual, expected, f"{label}.{path}")
+        else:  # pragma: no cover - unreachable, kinds are closed
+            raise ValueError(f"{label}.{path}: unknown rule kind {kind!r}")
+
+
+def _family_rules(results: dict, facts: dict, deviations: list[str]) -> dict:
+    finding = "family_finding"
+    rules = {
+        "card_kind": (CONSTANT, CARD_FAMILY),
+        f"{finding}.claim_type": (CONSTANT, "resolving_power"),
+        f"{finding}.separability_basis": (SOURCE, "results:primary.separability_basis"),
+        f"{finding}.headline.separable_count": (SOURCE, "results:primary.separable_count"),
+        f"{finding}.headline.family_size": (SOURCE, "results:primary.family_size"),
+        f"{finding}.headline.unit": (CONSTANT, "adjacent_pairs"),
+        f"{finding}.observed.resolved_count": (SOURCE, "results:primary.resolved_count"),
+        f"{finding}.observed.decision_rule": (CONSTANT, RULE_HOLM),
+        f"{finding}.observed.note": (
+            CONSTANT,
+            "separable asks whether rejection was reachable at all; resolved asks whether "
+            "the observed test rejected, which is the stronger requirement",
+        ),
+        f"{finding}.criterion.statistic": (CONSTANT, STATISTIC_EXACT_MCNEMAR),
+        f"{finding}.criterion.convention": (CONSTANT, TWO_SIDED_CONVENTION),
+        f"{finding}.criterion.correction": (CONSTANT, "holm"),
+        f"{finding}.criterion.alpha": (SOURCE, "results:configuration.alpha"),
+        f"{finding}.criterion.threshold": (SOURCE, "results:primary.first_critical"),
+        f"{finding}.limit.first_rejection_gap_floor": (
+            SOURCE,
+            "results:primary.first_rejection_gap_floor",
+        ),
+        f"{finding}.limit.observed_extreme": (SOURCE, "results:primary.largest_observed_gap"),
+        f"{finding}.limit.floor_label": (
+            CONSTANT,
+            "family gateway floor, cleared by the first rejection",
+        ),
+        f"{finding}.limit.observed_extreme_label": (
+            CONSTANT,
+            "largest observed adjacent gap",
+        ),
+        f"{finding}.limit.inference": (
+            TEMPLATE,
+            (
+                _INFERENCE_NONE
+                if results["primary"]["separable_count"] == 0
+                else _INFERENCE_SEPARABLE,
+                {
+                    "separable_count": "results:primary.separable_count",
+                    "family_size": "results:primary.family_size",
+                    "first_rejection_gap_floor": "results:primary.first_rejection_gap_floor",
+                    "largest_observed_gap": "results:primary.largest_observed_gap",
+                },
+            ),
+        ),
+        f"{finding}.scope.comparisons": (CONSTANT, "adjacent pairs only"),
+        f"{finding}.scope.excludes": (
+            CONSTANT,
+            "non-adjacent comparisons are out of scope",
+        ),
+        f"{finding}.definitions.separable": (
+            CONSTANT,
+            "the family's Holm procedure could reject this pair under best-case overlaps; "
+            "not separable is a stronger result than an observed test merely not rejecting",
+        ),
+        f"{finding}.disclosure.applies_to_headline": (CONSTANT, []),
+        f"{finding}.progressive_disclosure.secondary_family_size": (
+            SOURCE,
+            "results:secondary.non_tied_family.size",
+        ),
+        f"{finding}.progressive_disclosure.secondary_family_floor": (
+            SOURCE,
+            "results:secondary.non_tied_family.gap_floor",
+        ),
+    }
+    for index, text in enumerate(
+        [
+            "integrity gate 3 passes, so derived counts match published rates",
+            "the coverage rule substitutes no entry",
+        ]
+    ):
+        rules[f"{finding}.conditionality[{index}]"] = (CONSTANT, text)
+    rules[f"{finding}.disclosure.applies_to_secondary[0]"] = (CONSTANT, D4_DEVIATION)
+
+    # --- The plain-language finding layer's rules (T3.4 spec section 10.3, revision 4) ---
+    #
+    # Built from PLAIN_LANGUAGE_SOURCES, the same mapping render_plain_language_finding reads,
+    # so the validated path and the rendered path cannot drift while both stay individually
+    # correct (D1.12).
+    plain = f"{finding}.plain_language"
+    rules.update(
+        {
+            f"{plain}.lead": (TEMPLATE, (_LEAD, {"board_size": "aggregates:family_size"})),
+            f"{plain}.lead_basis": (
+                CONSTANT,
+                "distinguishable_count, the observed test at the registered correction",
+            ),
+            f"{plain}.headline.count": (
+                SOURCE,
+                PLAIN_LANGUAGE_SOURCES["headline.count"],
+            ),
+            f"{plain}.headline.of": (SOURCE, PLAIN_LANGUAGE_SOURCES["headline.of"]),
+            f"{plain}.headline.unit": (CONSTANT, "neighboring pairs"),
+            f"{plain}.scope": (
+                TEMPLATE,
+                (
+                    _SCOPE,
+                    {
+                        "board_size": "aggregates:family_size",
+                        "family_size": "results:primary.family_size",
+                        "n_items": "aggregates:n_items",
+                    },
+                ),
+            ),
+            f"{plain}.comparison.largest_lead": (
+                SOURCE,
+                PLAIN_LANGUAGE_SOURCES["comparison.largest_lead"],
+            ),
+            f"{plain}.comparison.opening_lead": (
+                SOURCE,
+                PLAIN_LANGUAGE_SOURCES["comparison.opening_lead"],
+            ),
+            f"{plain}.comparison.unit": (CONSTANT, "tasks"),
+            f"{plain}.comparison.largest_lead_label": (CONSTANT, "largest lead"),
+            f"{plain}.comparison.opening_lead_label": (CONSTANT, "minimum opening lead"),
+            f"{plain}.analogy": (
+                TEMPLATE,
+                (
+                    _ANALOGY,
+                    {
+                        "opening_lead": "results:primary.first_rejection_gap_floor",
+                        "board_size": "aggregates:family_size",
+                        "largest_lead": "results:primary.largest_observed_gap",
+                    },
+                ),
+            ),
+            f"{plain}.task_level_note": (
+                TEMPLATE,
+                (_TASK_LEVEL_NOTE, {"largest_lead": "results:primary.largest_observed_gap"}),
+            ),
+            f"{plain}.task_level_basis": (
+                CONSTANT,
+                "derived from published aggregates alone; per-instance work characterizes "
+                "the count and cannot overturn it",
+            ),
+        }
+    )
+    for index, text in enumerate(_NON_CLAIMS):
+        rules[f"{plain}.non_claims[{index}]"] = (CONSTANT, text)
+
+    rules.update(_provenance_rules(facts, CARD_FAMILY, deviations))
+    return rules
+
+
+def _pair_rules(record: dict, facts: dict, deviations: list[str]) -> dict:
+    rules = {
+        "card_kind": (CONSTANT, CARD_PAIR),
+        "verdict": (SOURCE, "record:verdict"),
+        "comparison.name": (SOURCE, "record:name"),
+        "comparison.system_a": (SOURCE, "record:system_a"),
+        "comparison.system_b": (SOURCE, "record:system_b"),
+        "comparison.instrument": (SOURCE, "results:configuration.instrument"),
+        "comparison.n_items": (SOURCE, "aggregates:n_items"),
+        "test.statistic": (CONSTANT, STATISTIC_EXACT_MCNEMAR),
+        "test.convention": (CONSTANT, TWO_SIDED_CONVENTION),
+        "test.decision_rule": (CONSTANT, RULE_HOLM),
+        "test.alpha": (SOURCE, "results:configuration.alpha"),
+        "test.p_value": (SOURCE, "record:p_value"),
+        "test.adjusted_p_value": (SOURCE, "record:adjusted_p_value"),
+        "ruler.observed_disagreements": (SOURCE, "record:n_discordant"),
+        "ruler.observed_net_edge": (SOURCE, "record:net_edge"),
+        "ruler.required_net_edge_at_observed": (
+            SOURCE,
+            "record:required_net_edge_at_observed",
+        ),
+        "ruler.threshold": (SOURCE, "results:primary.first_critical"),
+        # split is [n10, n01]; two indexed rules, because one list-valued rule would
+        # accept the reversal that renders the edge favouring the wrong system.
+        "ruler.split[0]": (SOURCE, "record:n10"),
+        "ruler.split[1]": (SOURCE, "record:n01"),
+        "ruler.threshold_basis": (
+            CONSTANT,
+            "the family's first critical value, the same bar as the gap floor",
+        ),
+        "ruler.requirement_basis": (
+            CONSTANT,
+            "at the observed discordance, not the best-case floor",
+        ),
+        "mde.status": (SOURCE, "record:mde.status"),
+        "mde.instances": (SOURCE, "record:mde.instances"),
+        "mde.rate_difference": (SOURCE, "record:mde.rate_difference"),
+        "mde.max_attainable_power": (SOURCE, "record:mde.max_attainable_power"),
+        "mde.discordance_rate": (SOURCE, "record:discordance_rate"),
+        "mde.alpha": (SOURCE, "results:mde_grid.alpha"),
+        "mde.target_power": (SOURCE, "results:mde_grid.target_power"),
+        "mde.alpha_basis": (
+            CONSTANT,
+            "registered uncorrected level, not the family correction",
+        ),
+    }
+    rules.update(_provenance_rules(facts, CARD_PAIR, deviations))
+    return rules
+
+
+def _provenance_rules(facts: dict, card_kind: str, deviations: list[str]) -> dict:
+    """Sources and revisions come from the validated manifest facts, never literals.
+
+    A family card seals the board as its source with the artifacts as secondary; a pair
+    card seals the artifacts with no secondary. The deviation rules are generated one
+    per index from the derived list, which is what makes a missing, extra, reordered, or
+    duplicated deviation fail.
+    """
+    if card_kind == CARD_FAMILY:
+        rules = {
+            "provenance.source": (CONSTANT, facts["board_repo"]),
+            "provenance.pinned_revision": (CONSTANT, facts["board_commit"]),
+            "provenance.secondary_source": (CONSTANT, facts["artifact_repo"]),
+            "provenance.secondary_revision": (CONSTANT, facts["artifact_revision"]),
+        }
+    else:
+        rules = {
+            "provenance.source": (CONSTANT, facts["artifact_repo"]),
+            "provenance.pinned_revision": (CONSTANT, facts["artifact_revision"]),
+            "provenance.secondary_source": (CONSTANT, None),
+            "provenance.secondary_revision": (CONSTANT, None),
+        }
+    rules["provenance.fetch_date"] = (CONSTANT, facts["fetch_date"])
+    for index, text in enumerate(deviations):
+        rules[f"provenance.deviations[{index}]"] = (DERIVED, text)
+    return rules
+
+
+def validate_card_set(cards: dict, results: dict, aggregates: dict, manifest: dict) -> None:
+    """Every card leaf against exactly one source. Raises ValueError on the first
+    disagreement, naming the path.
+
+    cards.json is a validated intermediate artifact: report.py cannot byte-regenerate it
+    without recomputing, so this is what stands in place of a byte check.
+    """
+    if set(cards) != {"family", "pairs"}:
+        raise ValueError(f"card set top-level keys must be {{family, pairs}}, got {sorted(cards)}")
+    entries = sorted(aggregates["entries"], key=lambda entry: entry["rank"])
+    facts = validate_manifest_population(manifest, aggregates)
+
+    expected_names = illustrative_pair_names(entries)
+    if set(cards["pairs"]) != set(expected_names):
+        raise ValueError(
+            f"pair cards {sorted(cards['pairs'])} do not match the registered D8 "
+            f"selection {expected_names}"
+        )
+
+    if results["primary"]["needs_per_instance_data"]:
+        raise ValueError(
+            "results primary needs_per_instance_data is true, so the finding layer's "
+            "task-level note must not claim the headline follows from published totals "
+            "alone; the card set is invalid for this run"
+        )
+
+    # _apply runs before validate_card at both call sites below. _apply is the total,
+    # structural crosswalk (spec section 3) and its errors name the exact leaf path, so
+    # they are the more specific diagnostic; validate_card's schema and renderability
+    # checks (invariants the crosswalk does not express, like resolved <= separable <=
+    # family_size) still run right after and are not skipped, only reported second. Since
+    # the family finding gained schema coverage in validate_card, calling it first would
+    # shadow the crosswalk's own path-naming errors with a coarser "missing block" message
+    # that names no path, which is a strictly worse diagnostic for the same defect.
+    context = {"results": results, "aggregates": aggregates, "manifest": manifest}
+    _apply(
+        _family_rules(results, facts, expected_deviations((), entries)),
+        cards["family"],
+        context,
+        "family",
+    )
+    validate_card(cards["family"])
+
+    records = {pair["name"]: pair for pair in results["pairs"]}
+    by_name = {f"rank_{a['rank']}_vs_{b['rank']}": (a, b) for a, b in adjacent_pairs(entries)}
+    for name in expected_names:
+        card = cards["pairs"][name]
+        if card["comparison"]["name"] != name:
+            raise ValueError(
+                f"pair card filed under key {name!r} carries comparison.name "
+                f"{card['comparison']['name']!r}"
+            )
+        context["record"] = records[name]
+        ranks = tuple(entry["rank"] for entry in by_name[name])
+        _apply(
+            _pair_rules(records[name], facts, expected_deviations(ranks, entries)),
+            card,
+            context,
+            f"pairs.{name}",
+        )
+        validate_card(card)
+
+
+D4_DEVIATION = "D4 harness comparability"
+
+_GITHUB_RAW = re.compile(r"https://raw\.githubusercontent\.com/([^/]+/[^/]+)/([0-9a-f]{40})/(.*)")
+
+
+def validate_manifest_population(manifest: dict, aggregates: dict) -> dict:
+    """The manifest must describe the analysed board before provenance is derived.
+
+    Without this, a manifest listing only the systems named on the illustrative cards
+    would satisfy every revision rule while the family card described the whole board.
+    """
+    entries = sorted(aggregates["entries"], key=lambda entry: entry["rank"])
+    expected = [entry["system"] for entry in entries]
+    artifacts = manifest["artifacts"]
+    observed = [record["system"] for record in artifacts]
+    if len(set(observed)) != len(observed):
+        raise ValueError(f"manifest artifact systems contain duplicates: {observed}")
+    if observed != expected:
+        if sorted(observed) == sorted(expected):
+            raise ValueError("manifest artifact order does not match the published entry order")
+        raise ValueError(
+            f"manifest artifact systems do not match the aggregate entries: "
+            f"missing {sorted(set(expected) - set(observed))}, "
+            f"extra {sorted(set(observed) - set(expected))}"
+        )
+
+    repos, revisions = set(), set()
+    for record in artifacts:
+        match = _GITHUB_RAW.fullmatch(record["url"])
+        if match is None:
+            raise ValueError(f"artifact url is not a pinned raw github url: {record['url']!r}")
+        repo, revision, tail = match.groups()
+        if record["system"] not in tail:
+            raise ValueError(
+                f"artifact url does not contain its own system {record['system']!r}: "
+                f"{record['url']!r}"
+            )
+        repos.add(repo)
+        revisions.add(revision)
+    if len(repos) != 1:
+        raise ValueError(f"artifact urls span more than one repository: {sorted(repos)}")
+    if len(revisions) != 1:
+        raise ValueError(f"artifact urls span more than one revision: {sorted(revisions)}")
+
+    board_match = _GITHUB_RAW.fullmatch(manifest["board"]["url"])
+    if board_match is None:
+        raise ValueError(f"board url is not a pinned raw github url: {manifest['board']['url']!r}")
+    board_repo, board_revision, _ = board_match.groups()
+    if board_revision != manifest["board"]["commit"]:
+        raise ValueError(
+            f"board url revision {board_revision} does not match board.commit "
+            f"{manifest['board']['commit']}"
+        )
+
+    return {
+        "board_repo": board_repo,
+        "board_commit": manifest["board"]["commit"],
+        "artifact_repo": repos.pop(),
+        "artifact_revision": revisions.pop(),
+        "fetch_date": require_canonical_date(manifest["fetch_date"], "manifest fetch_date"),
+    }
+
+
+def expected_deviations(ranks: tuple[int, ...], entries: list[dict]) -> list[str]:
+    """D4 always, plus a derived disclosure for each malformed upstream field.
+
+    Derived rather than matched by substring, so the disclosure is checkable in both
+    directions: a pair whose entries carry no malformed field must not claim one.
+    """
+    by_rank = {entry["rank"]: entry for entry in entries}
+    deviations = [D4_DEVIATION]
+    for rank in ranks:
+        entry = by_rank[rank]
+        if entry.get("checked_is_malformed"):
+            deviations.append(
+                f"upstream 'checked' field for rank {rank} is a sentence, not a boolean: "
+                f"{entry['checked_raw']!r}"
+            )
+    return deviations
