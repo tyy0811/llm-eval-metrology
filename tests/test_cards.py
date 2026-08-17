@@ -395,10 +395,55 @@ class TestIdSafety:
         assert re.fullmatch(r"[A-Za-z0-9_-]+", html_id(name)), html_id(name)
 
     def test_ids_are_deterministic(self) -> None:
-        assert html_id("rank 3 vs 4") == html_id("rank 3 vs 4")
+        """Determinism across process runs, not just within one, is the property that matters.
+
+        Two same-process calls on one literal cannot differ no matter what html_id does inside,
+        even a body of `return "card"` passes that comparison. What make reproduce actually needs
+        is stability across separate interpreter runs, which only a value fixed outside this
+        process's own state can prove. Pinned against the id the committed snapshot carries, so a
+        reimplementation using Python's built-in hash() (salted per process by PYTHONHASHSEED)
+        would fail here even though it would still pass a same-call comparison.
+        """
+        snapshot = (FIXTURES / "snapshot_pair_gap0.html").read_text(encoding="utf-8")
+        committed_id = re.search(r'aria-labelledby="pair-([^"]+)"', snapshot).group(1)
+        assert html_id("rank_1_vs_2") == committed_id
 
     def test_different_names_get_different_ids(self) -> None:
         assert html_id("a b") != html_id("a-b")
+
+    def test_the_referenced_id_is_present_on_the_element_it_names(self) -> None:
+        """aria-labelledby must not point at an id absent from the page.
+
+        Moving the whitespace/punctuation sanitization tests onto html_id directly (above) is
+        correct, since render_pair_card now refuses those names before html_id is reached. But it
+        dropped the one assertion that the id html_id produces is actually wired to a real
+        element: `render_pair_card` uses the same `slug` for both `aria-labelledby` and the
+        heading's `id`, and nothing but a byte-identical snapshot comparison was left checking
+        that. Snapshots get regenerated on failure rather than caught, as four were regenerated in
+        this very task, so a dangling reference would be baked into a new baseline instead of
+        failing. Uses a canonical name, since that is the only shape reaching the renderer now.
+        """
+        rendered = render_card(pair_with(43))
+        referenced = re.search(r'aria-labelledby="([^"]+)"', rendered).group(1)
+
+        assert f'id="{referenced}"' in rendered
+
+
+class TestNonCanonicalNameIsNotSilentlyRendered:
+    """A caught ValueError in render_pair_card's label line would reintroduce the exact
+    passthrough pair_display_label exists to prevent, silently, and nothing else in this suite
+    would catch it: both pair snapshots and the page reference fragment equality use only
+    canonical names (rank_1_vs_2, rank_3_vs_4), which never reach a fallback branch, and
+    TestPairDisplayLabel exercises pair_display_label directly, never through the renderer. This
+    is the guard that closes that gap, at the one place a caught exception would matter.
+    """
+
+    def test_a_non_canonical_name_raises_through_the_full_renderer(self) -> None:
+        card = pair_with(43)
+        card["comparison"]["name"] = "baseline_vs_rank_1"
+
+        with pytest.raises(ValueError, match="rank_"):
+            render_card(card)
 
 
 class TestSeparableDefinitionPrefix:
@@ -2240,8 +2285,6 @@ class TestPrecisionRoundTrips:
     """
 
     def test_the_first_critical_value_round_trips(self) -> None:
-        import json
-
         from metrology.cards import _precise
 
         results = json.loads(
