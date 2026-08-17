@@ -1419,6 +1419,71 @@ def page_text_units(text: str) -> DeclaredTextReader:
     return parse_text_units(body_outside_the_total_regions(text), PAGE_TEXT_UNITS)
 
 
+class _TableParser(HTMLParser):
+    """Structural parse of the first `<table>` in a fragment: caption, header row, body rows.
+
+    A regex reads a table as a string of tags, so it can only prove a substring exists somewhere;
+    it cannot tell a header cell from a body cell or bind a value to its row. This reads the
+    fragment the way a browser's DOM would, which is what `render_pair_table`'s shape tests need:
+    `parsed.header == ["a", "b"]` fails if a column lands in the wrong position even though every
+    string it contains is still present in the output.
+
+    Text is collected via `handle_data` alone and never passed back through a tag-stripping
+    collapse: `HTMLParser` with `convert_charrefs=True` already hands escaped markup back as plain
+    decoded text, so a cell holding `&lt;script&gt;` decodes to the literal characters `<script>`,
+    which a second pass of tag-stripping would misread as a real tag and silently delete.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.caption = ""
+        self.header: list[str] = []
+        self.rows: list[list[str]] = []
+        self._section: str | None = None
+        self._row: list[str] | None = None
+        self._chunks: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "caption":
+            self._chunks = []
+        elif tag in ("thead", "tbody"):
+            self._section = tag
+        elif tag == "tr":
+            self._row = []
+        elif tag in ("th", "td"):
+            self._chunks = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "caption":
+            self.caption = "".join(self._chunks or [])
+            self._chunks = None
+        elif tag in ("th", "td"):
+            if self._row is not None:
+                self._row.append("".join(self._chunks or []))
+            self._chunks = None
+        elif tag == "tr":
+            if self._row is not None:
+                if self._section == "thead":
+                    self.header = self._row
+                elif self._section == "tbody":
+                    self.rows.append(self._row)
+            self._row = None
+        elif tag in ("thead", "tbody"):
+            self._section = None
+
+    def handle_data(self, data: str) -> None:
+        if self._chunks is not None:
+            self._chunks.append(data)
+
+
+def parse_table(fragment: str) -> _TableParser:
+    """Parse the first table in a fragment into its caption, header cells, and body rows."""
+    parser = _TableParser()
+    parser.feed(fragment)
+    parser.close()
+    return parser
+
+
 class TestPageReference:
     """T3.4 full-page reference: the second D1.3 gate.
 
@@ -2355,3 +2420,152 @@ class TestPrecisionRoundTrips:
 
         for value in (0.002631578947368421, 0.1 + 0.2, 1 / 3, 2**-40):
             assert float(_precise(value)) == value
+
+
+class TestRenderPairTable:
+    """Spec section 5. The structure must match the approved table_reference.html,
+    including the block wrapper and the keyboard-reachable scroll container, because
+    Task 8 assembles fragments into a flex column that would otherwise strand the
+    disclosure note away from its own table."""
+
+    def test_shape_and_content(self) -> None:
+        from metrology.cards import render_pair_table
+
+        rendered = render_pair_table(
+            ("a", "b"), [("1", "2"), ("3", "4")], heading="H", disclosure="D"
+        )
+        parsed = parse_table(rendered)
+        assert parsed.caption == "H"
+        assert parsed.header == ["a", "b"]
+        assert parsed.rows == [["1", "2"], ["3", "4"]]
+        assert "D" in rendered
+        assert "<thead>" in rendered and "<tbody>" in rendered
+
+    def test_it_emits_the_approved_wrapper_and_scroll_container(self) -> None:
+        from metrology.cards import render_pair_table
+
+        rendered = render_pair_table(("a",), [("1",)], heading="H", disclosure="D")
+        assert '<div class="pair-table-block">' in rendered
+        assert 'class="pair-table-scroll"' in rendered
+        assert 'tabindex="0"' in rendered
+        assert 'role="region"' in rendered
+        assert rendered.index("pair-table-block") < rendered.index("pair-table-scroll")
+        assert rendered.index("</table>") < rendered.index("pair-table-note")
+
+    def test_a_ragged_row_is_rejected(self) -> None:
+        from metrology.cards import render_pair_table
+
+        with pytest.raises(ValueError, match="width"):
+            render_pair_table(("a", "b"), [("1",)], heading="H", disclosure="D")
+
+    def test_duplicate_columns_are_rejected(self) -> None:
+        from metrology.cards import render_pair_table
+
+        with pytest.raises(ValueError, match="duplicate"):
+            render_pair_table(("a", "a"), [("1", "2")], heading="H", disclosure="D")
+
+    def test_every_field_is_escaped(self) -> None:
+        """A cell reaching an unescaped slot produced executable markup once before."""
+        from metrology.cards import render_pair_table
+
+        payload = "<script>alert(1)</script>"
+        rendered = render_pair_table((payload,), [(payload,)], heading=payload, disclosure=payload)
+        assert "<script>" not in rendered
+        assert "&lt;script&gt;" in rendered
+        assert parse_table(rendered).header == [payload]
+
+    def test_snapshot(self) -> None:
+        from metrology.cards import render_pair_table
+
+        assert_snapshot(
+            "snapshot_pair_table.html",
+            render_pair_table(
+                ("pair", "resolved-count gap"),
+                [("rank_1_vs_2", "0"), ("rank_3_vs_4", "7")],
+                heading="Adjacent pairs",
+                disclosure="D4 qualifies the observed columns.",
+            ),
+        )
+
+
+class TestRenderPlainLanguageFinding:
+    """Spec 10.4. Every figure prints through render_number at its declared path, and
+    the renderer reads the same PLAIN_LANGUAGE_SOURCES mapping the validator does, so
+    the rendered path and the validated path cannot drift while both stay correct."""
+
+    def block(self) -> dict:
+        return plain_language_finding(
+            PlainLanguageInputs(
+                board_size=20,
+                family_size=19,
+                n_items=500,
+                distinguishable_count=0,
+                largest_lead=7,
+                opening_lead=10,
+                needs_per_instance_data=False,
+            )
+        )
+
+    def test_the_first_reading_carries_no_apparatus(self) -> None:
+        """Tier 1 states no p-value, names no system, uses the word Holm nowhere, and
+        shows no provenance. A reader who stops here has a complete headline.
+
+        Asserted directly against render_plain_language_finding's own return value, not
+        against a page assembled around it: the function renders only the Tier 1 article,
+        so its output already is the finding fragment rather than something larger that
+        merely contains it.
+        """
+        from metrology.cards import render_plain_language_finding
+
+        rendered = render_plain_language_finding(self.block()).lower()
+        for banned in ("holm", "p-value", "p_value", "provenance", "alpha"):
+            assert banned not in rendered
+        assert not re.search(r"\bd\d", rendered)
+
+    def test_it_carries_the_approved_lead_and_non_claims(self) -> None:
+        from metrology.cards import render_plain_language_finding
+
+        rendered = render_plain_language_finding(self.block())
+        assert (
+            "Using the statistical test chosen in advance, no neighboring top-20 pair "
+            "showed a reliable difference." in rendered
+        )
+        assert "This does not show the systems are equivalent." in rendered
+        assert "This does not cover systems that are not neighbors." in rendered
+
+    def test_the_comparison_bars_bind_each_proportion_to_its_own_row(self) -> None:
+        """The axis maximum is the mark, so the observed lead visibly stops short.
+
+        Checking that "flex: 7", "flex: 3" and "flex: 10" each appear somewhere in the
+        rendered fragment is order-free and row-free: swapping which row carries which
+        pair of flex values would leave all three substrings present while drawing the
+        finding exactly backwards, with every label still correct. lead_scale_rows and
+        strip_flex, the same helpers TestPageReference uses to hold the approved page to
+        this property, bind each proportion to the row it belongs to instead of merely
+        checking the digits exist somewhere in the output.
+        """
+        from metrology.cards import render_plain_language_finding
+
+        rendered = render_plain_language_finding(self.block())
+        rows = lead_scale_rows(rendered)
+        assert [modifier for modifier, _ in rows] == ["is-observed", "is-mark"]
+        observed, marked = rows[0][1], rows[1][1]
+
+        assert strip_flex(observed, "a") == 7
+        assert strip_flex(observed, "b") == 3
+        assert strip_flex(marked, "a") == 10
+        assert strip_flex(marked, "b") is None, "the mark row must fill its track"
+
+    def test_everything_is_escaped(self) -> None:
+        from metrology.cards import render_plain_language_finding
+
+        block = self.block()
+        block["lead"] = "<script>alert(1)</script>"
+        rendered = render_plain_language_finding(block)
+        assert "<script>" not in rendered
+        assert "&lt;script&gt;" in rendered
+
+    def test_snapshot(self) -> None:
+        from metrology.cards import render_plain_language_finding
+
+        assert_snapshot("snapshot_finding.html", render_plain_language_finding(self.block()))

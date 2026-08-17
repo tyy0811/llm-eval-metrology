@@ -20,7 +20,14 @@ import re
 from html import escape
 from pathlib import Path
 
-from ..reporting import CARD_FAMILY, CARD_PAIR, pair_display_label, validate_card
+from ..reporting import (
+    CARD_FAMILY,
+    CARD_PAIR,
+    PLAIN_LANGUAGE_SOURCES,
+    pair_display_label,
+    render_number,
+    validate_card,
+)
 
 #: The approved stylesheet, kept in `card.css` as a single source of truth rather than inlined
 #: here, so it is not squeezed into a Python line-length budget. A test asserts it agrees with
@@ -327,6 +334,110 @@ def render_family_card(card: dict) -> str:
         f"{_seal(seal)}\n"
         f"  </section>\n"
         f"</article>"
+    )
+
+
+def render_pair_table(columns, rows, *, heading: str, disclosure: str) -> str:
+    """The pair table as an HTML fragment, in the approved fixtures/table_reference.html shape.
+
+    Takes already-rendered row strings from reporting.findings_pair_rows, so the README markdown
+    table and this table are two renderings of one projection and cannot disagree about a pair.
+    The block wrapper is not decoration: render_document joins fragments into a flex column with a
+    gap, so a page-level note would sit away from its own table and outside the surface that
+    qualifies it.
+
+    The reference also names the table's parts with `data-element`, for review only; those
+    attributes are review annotations rather than renderer output (the accompanying comment in
+    card.css makes the same point for the block), so nothing here emits them.
+    """
+    columns = tuple(columns)
+    if len(set(columns)) != len(columns):
+        raise ValueError(f"duplicate column names: {columns!r}")
+    for index, row in enumerate(rows):
+        if len(row) != len(columns):
+            raise ValueError(
+                f"row {index} has width {len(row)}, expected {len(columns)} to match the columns"
+            )
+    header = "".join(f'<th scope="col">{escape(str(name))}</th>' for name in columns)
+    body = "".join(
+        "<tr>" + "".join(f"<td>{escape(str(cell))}</td>" for cell in row) + "</tr>" for row in rows
+    )
+    return (
+        '<div class="pair-table-block">'
+        '<div class="pair-table-scroll" tabindex="0" role="region" '
+        'aria-label="Pair table">'
+        '<table class="pair-table">'
+        f"<caption>{escape(heading)}</caption>"
+        f"<thead><tr>{header}</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table>"
+        "</div>"
+        f'<p class="pair-table-note">{escape(disclosure)}</p>'
+        "</div>"
+    )
+
+
+def render_plain_language_finding(block: dict) -> str:
+    """The finding layer, as an `article` fragment, in the approved fixtures/page_reference.html
+    Tier 1 shape. Spec sections 10 and 11.
+
+    Every figure prints through render_number at the path PLAIN_LANGUAGE_SOURCES declares for it,
+    the same mapping the crosswalk builds its rules from, so a rendered figure and a validated
+    figure cannot come from different places while both look right.
+
+    The comparison is two `.lead-scale-row` elements, one `is-observed` and one `is-mark`, each
+    wrapping its own `.strip` and `.strip-legend`: the observed lead and the mark are drawn on one
+    scale whose full length is the mark, so the reader sees the lead stop short of it rather than
+    reading that it does. card.css keys the observed colour off `.lead-scale-row.is-observed
+    .strip-a`, so the modifier belongs on the row, not on the strip itself.
+    """
+
+    def figure(leaf: str, value) -> str:
+        return escape(render_number(PLAIN_LANGUAGE_SOURCES[leaf], value))
+
+    headline, comparison = block["headline"], block["comparison"]
+    lead = figure("comparison.largest_lead", comparison["largest_lead"])
+    mark = figure("comparison.opening_lead", comparison["opening_lead"])
+    # The shortfall is a layout quantity, drawn but never read as a figure: it has no legend of
+    # its own and so no declared source path to print it through.
+    shortfall = comparison["opening_lead"] - comparison["largest_lead"]
+    unit = escape(comparison["unit"])
+    non_claims = "".join(f"<li>{escape(text)}</li>" for text in block["non_claims"])
+    return (
+        '<article class="card finding" aria-labelledby="finding-lead">\n'
+        '  <hr class="card-rail">\n'
+        "  <section>\n"
+        f'    <p class="finding-lead" id="finding-lead">{escape(block["lead"])}</p>\n'
+        f'    <p class="banner-figure"><b>{figure("headline.count", headline["count"])} of '
+        f"{figure('headline.of', headline['of'])}</b> {escape(headline['unit'])} "
+        "showed a reliable difference</p>\n"
+        f'    <p class="scope-line">{escape(block["scope"])}</p>\n'
+        "  </section>\n"
+        "  <section>\n"
+        '    <div class="lead-scale">\n'
+        '      <div class="lead-scale-row is-observed">\n'
+        '        <div class="strip" aria-hidden="true">\n'
+        f'          <div class="strip-a" style="flex: {lead};"></div>\n'
+        f'          <div class="strip-b" style="flex: {shortfall};"></div>\n'
+        "        </div>\n"
+        f'        <p class="strip-legend"><span>{escape(comparison["largest_lead_label"])}'
+        f"</span><span>{lead} {unit}</span></p>\n"
+        "      </div>\n"
+        '      <div class="lead-scale-row is-mark">\n'
+        '        <div class="strip" aria-hidden="true">\n'
+        f'          <div class="strip-a" style="flex: {mark};"></div>\n'
+        "        </div>\n"
+        f'        <p class="strip-legend"><span>{escape(comparison["opening_lead_label"])}'
+        f"</span><span>{mark} {unit}</span></p>\n"
+        "      </div>\n"
+        "    </div>\n"
+        f'    <p class="reading">{escape(block["analogy"])}</p>\n'
+        f'    <p class="reading">{escape(block["task_level_note"])}</p>\n'
+        "  </section>\n"
+        "  <section>\n"
+        f'    <ul class="non-claims">{non_claims}</ul>\n'
+        "  </section>\n"
+        "</article>"
     )
 
 
