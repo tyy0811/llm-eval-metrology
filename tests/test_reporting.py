@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import MALFORMED_PAIR_NAMES
 
 from metrology.paired import minimum_gap_for_threshold
 from metrology.reporting import (
@@ -1306,10 +1307,16 @@ class TestPairDisplayLabel:
         assert pair_display_label("rank_1_vs_2") == "Ranks 1 and 2"
         assert pair_display_label("rank_16_vs_17") == "Ranks 16 and 17"
 
-    def test_it_refuses_anything_outside_the_registered_shape(self) -> None:
-        """A silent passthrough would put the identifier back with no test failing."""
+    @pytest.mark.parametrize("bad", MALFORMED_PAIR_NAMES)
+    def test_it_refuses_anything_outside_the_registered_shape(self, bad: str) -> None:
+        """A silent passthrough would put the identifier back with no test failing.
+
+        Parametrized over the shared MALFORMED_PAIR_NAMES (conftest.py) rather than a local
+        tuple, so a case added here is automatically covered by the renderer-level test in
+        test_cards.py::TestNonCanonicalNameIsNotSilentlyRendered too, instead of requiring
+        someone to remember to mirror it by hand.
+        """
         from metrology.reporting import pair_display_label
 
-        for bad in ("rank_3_vs_", "rank_a_vs_b", "3_vs_4", "", "Ranks 3 and 4", "rank_3"):
-            with pytest.raises(ValueError, match="rank_"):
-                pair_display_label(bad)
+        with pytest.raises(ValueError, match="rank_"):
+            pair_display_label(bad)

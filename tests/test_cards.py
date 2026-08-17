@@ -17,6 +17,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from conftest import MALFORMED_PAIR_NAMES
 
 from metrology.cards import (
     CARD_STYLESHEET,
@@ -436,11 +437,21 @@ class TestNonCanonicalNameIsNotSilentlyRendered:
     canonical names (rank_1_vs_2, rank_3_vs_4), which never reach a fallback branch, and
     TestPairDisplayLabel exercises pair_display_label directly, never through the renderer. This
     is the guard that closes that gap, at the one place a caught exception would matter.
+
+    Parametrized over the same MALFORMED_PAIR_NAMES (conftest.py) that
+    test_reporting.py::TestPairDisplayLabel checks against pair_display_label in isolation, not a
+    local example, because a single hand-picked case here (originally just
+    "baseline_vs_rank_1", which does not start with "rank_") only rules out a fallback shaped
+    around that one input. A fallback tuned to trust anything starting with "rank_" verbatim
+    passed the whole suite while still leaking "rank_3_vs_" through the heading; that input was
+    already in the isolation test's set and would have caught this here too, had the two tests
+    shared it instead of each keeping its own list.
     """
 
-    def test_a_non_canonical_name_raises_through_the_full_renderer(self) -> None:
+    @pytest.mark.parametrize("bad", MALFORMED_PAIR_NAMES)
+    def test_a_non_canonical_name_raises_through_the_full_renderer(self, bad: str) -> None:
         card = pair_with(43)
-        card["comparison"]["name"] = "baseline_vs_rank_1"
+        card["comparison"]["name"] = bad
 
         with pytest.raises(ValueError, match="rank_"):
             render_card(card)
