@@ -353,11 +353,18 @@ def render_pair_table(columns, rows, *, heading: str, disclosure: str) -> str:
     columns = tuple(columns)
     if len(set(columns)) != len(columns):
         raise ValueError(f"duplicate column names: {columns!r}")
+    # Materialized once, up front. rows is untyped and may be a generator; enumerate() below
+    # would otherwise drain it before the body comprehension further down ever saw it, which let
+    # a generator argument through validation for free and rendered an empty <tbody>, silently.
+    rows = [tuple(row) for row in rows]
     for index, row in enumerate(rows):
         if len(row) != len(columns):
             raise ValueError(
                 f"row {index} has width {len(row)}, expected {len(columns)} to match the columns"
             )
+    # columns and rows are untyped and may hand back non-string cells (an int rank, say), so each
+    # is coerced through str() before escape(); heading and disclosure are typed str in the
+    # signature above and need no such coercion.
     header = "".join(f'<th scope="col">{escape(str(name))}</th>' for name in columns)
     body = "".join(
         "<tr>" + "".join(f"<td>{escape(str(cell))}</td>" for cell in row) + "</tr>" for row in rows
@@ -399,7 +406,10 @@ def render_plain_language_finding(block: dict) -> str:
     lead = figure("comparison.largest_lead", comparison["largest_lead"])
     mark = figure("comparison.opening_lead", comparison["opening_lead"])
     # The shortfall is a layout quantity, drawn but never read as a figure: it has no legend of
-    # its own and so no declared source path to print it through.
+    # its own and so no declared source path to print it through render_number. It also bypasses
+    # escape(): the subtraction runs on the two type-checked ints above rather than on
+    # caller-supplied text (and raises on anything that is not numeric), so the result can only
+    # ever be a plain integer, and there is nothing in an integer's str() for escape() to touch.
     shortfall = comparison["opening_lead"] - comparison["largest_lead"]
     unit = escape(comparison["unit"])
     non_claims = "".join(f"<li>{escape(text)}</li>" for text in block["non_claims"])

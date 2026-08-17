@@ -28,6 +28,7 @@ from metrology.cards import (
 )
 from metrology.reporting import (
     FINDINGS_COLUMNS,
+    PLAIN_LANGUAGE_SOURCES,
     PairCounts,
     PlainLanguageInputs,
     Provenance,
@@ -1432,6 +1433,12 @@ class _TableParser(HTMLParser):
     collapse: `HTMLParser` with `convert_charrefs=True` already hands escaped markup back as plain
     decoded text, so a cell holding `&lt;script&gt;` decodes to the literal characters `<script>`,
     which a second pass of tag-stripping would misread as a real tag and silently delete.
+
+    Stops at the first table's own closing tag rather than reading every `<table>` in the
+    fragment. A page assembled from several fragments (Task 8) can hold more than one table, and
+    without this the parser kept accumulating `<tr>`s past the first `</table>`: fed two
+    concatenated tables it returned the last one's caption and header with every row from both
+    appended underneath, silently, rather than the first table's own shape or a loud failure.
     """
 
     def __init__(self) -> None:
@@ -1442,8 +1449,11 @@ class _TableParser(HTMLParser):
         self._section: str | None = None
         self._row: list[str] | None = None
         self._chunks: list[str] | None = None
+        self._finished = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._finished:
+            return
         if tag == "caption":
             self._chunks = []
         elif tag in ("thead", "tbody"):
@@ -1454,6 +1464,8 @@ class _TableParser(HTMLParser):
             self._chunks = []
 
     def handle_endtag(self, tag: str) -> None:
+        if self._finished:
+            return
         if tag == "caption":
             self.caption = "".join(self._chunks or [])
             self._chunks = None
@@ -1470,8 +1482,12 @@ class _TableParser(HTMLParser):
             self._row = None
         elif tag in ("thead", "tbody"):
             self._section = None
+        elif tag == "table":
+            self._finished = True
 
     def handle_data(self, data: str) -> None:
+        if self._finished:
+            return
         if self._chunks is not None:
             self._chunks.append(data)
 
@@ -1482,6 +1498,28 @@ def parse_table(fragment: str) -> _TableParser:
     parser.feed(fragment)
     parser.close()
     return parser
+
+
+class TestParseTable:
+    """parse_table is shared: TestRenderPairTable uses it today, and it is meant to be the one
+    parser later tasks reuse rather than each writing another. A fragment with two tables in it
+    is exactly what Task 8's assembled page produces, so the docstring's claim of reading only
+    the first table needs its own guard rather than resting on render_pair_table's tests, none of
+    which ever hands it more than one table."""
+
+    def test_a_second_table_in_the_fragment_is_not_merged_into_the_first(self) -> None:
+        first = (
+            '<table><caption>First</caption><thead><tr><th scope="col">a</th></tr></thead>'
+            "<tbody><tr><td>1</td></tr></tbody></table>"
+        )
+        second = (
+            '<table><caption>Second</caption><thead><tr><th scope="col">b</th></tr></thead>'
+            "<tbody><tr><td>2</td></tr></tbody></table>"
+        )
+        parsed = parse_table(first + second)
+        assert parsed.caption == "First"
+        assert parsed.header == ["a"]
+        assert parsed.rows == [["1"]]
 
 
 class TestPageReference:
@@ -2464,6 +2502,26 @@ class TestRenderPairTable:
         with pytest.raises(ValueError, match="duplicate"):
             render_pair_table(("a", "a"), [("1", "2")], heading="H", disclosure="D")
 
+    def test_a_generator_of_rows_is_validated_and_rendered_not_drained_silently(self) -> None:
+        """enumerate(rows) in the validation loop drained a generator before the body
+        comprehension further down ever reached it: a generator argument passed validation
+        vacuously (nothing left to check width on) and rendered an empty <tbody>, with the
+        caller's rows never appearing anywhere and no error raised. rows is a plain untyped
+        parameter, so nothing stops a generator from arriving; this pins that a generator is
+        materialized once and behaves exactly like the equivalent list, for both the happy
+        path and the validation path.
+        """
+        from metrology.cards import render_pair_table
+
+        rendered = render_pair_table(
+            ("a", "b"), iter([("1", "2"), ("3", "4")]), heading="H", disclosure="D"
+        )
+        parsed = parse_table(rendered)
+        assert parsed.rows == [["1", "2"], ["3", "4"]]
+
+        with pytest.raises(ValueError, match="width"):
+            render_pair_table(("a", "b"), iter([("1",)]), heading="H", disclosure="D")
+
     def test_every_field_is_escaped(self) -> None:
         """A cell reaching an unescaped slot produced executable markup once before."""
         from metrology.cards import render_pair_table
@@ -2514,13 +2572,27 @@ class TestRenderPlainLanguageFinding:
         against a page assembled around it: the function renders only the Tier 1 article,
         so its output already is the finding fragment rather than something larger that
         merely contains it.
+
+        "names no system" had no check here: a sentence such as "McNemar at the 0.05 level,
+        Bonferroni-adjusted, 20250928_trae_doubao_seed_code vs
+        20251120_livesweagent_gemini-3-pro-preview" contains none of the five banned words
+        and matches no \\bd\\d, so a word list alone approves it. The corpus's own roster of
+        system identifiers is the thing to check against, not a spelling this test would have
+        to keep inventing: a system added or renamed on the board is covered automatically.
         """
         from metrology.cards import render_plain_language_finding
 
-        rendered = render_plain_language_finding(self.block()).lower()
+        rendered = render_plain_language_finding(self.block())
+        lowered = rendered.lower()
         for banned in ("holm", "p-value", "p_value", "provenance", "alpha"):
-            assert banned not in rendered
-        assert not re.search(r"\bd\d", rendered)
+            assert banned not in lowered
+        assert not re.search(r"\bd\d", lowered)
+
+        aggregates = json.loads(CORPUS_FILES["aggregates"].read_text(encoding="utf-8"))
+        systems = [entry["system"] for entry in aggregates["entries"]]
+        assert systems, "no systems found in the aggregates corpus"
+        for system in systems:
+            assert system not in rendered, system
 
     def test_it_carries_the_approved_lead_and_non_claims(self) -> None:
         from metrology.cards import render_plain_language_finding
@@ -2543,6 +2615,13 @@ class TestRenderPlainLanguageFinding:
         strip_flex, the same helpers TestPageReference uses to hold the approved page to
         this property, bind each proportion to the row it belongs to instead of merely
         checking the digits exist somewhere in the output.
+
+        Binding the bars to their rows is not the same guard as binding the legends to
+        theirs: swapping only the two <p class="strip-legend"> texts between rows, so the
+        partially filled is-observed row reads "minimum opening lead / 10 tasks" and the
+        full is-mark row reads "largest lead / 7 tasks", leaves every strip_flex assertion
+        above passing while drawing the mirror image of the same defect, the labels lying
+        about which bar is which. Each row's own legend text is checked against that row.
         """
         from metrology.cards import render_plain_language_finding
 
@@ -2556,14 +2635,91 @@ class TestRenderPlainLanguageFinding:
         assert strip_flex(marked, "a") == 10
         assert strip_flex(marked, "b") is None, "the mark row must fill its track"
 
-    def test_everything_is_escaped(self) -> None:
+        assert "<span>largest lead</span><span>7 tasks</span>" in observed
+        assert "<span>minimum opening lead</span><span>10 tasks</span>" in marked
+
+    def test_every_string_field_is_escaped(self) -> None:
+        """Mutating only block["lead"] guards 1 of the 9 string-typed fields the caller
+        supplies (lead, scope, headline.unit, comparison.unit, both comparison labels,
+        analogy, task_level_note, and the non_claims entries). Dropping escape() from any
+        of the other 8 left every test green and the snapshot byte-identical, because none
+        of those strings happened to contain a character escape() touches: block["scope"]
+        set to a script payload rendered a live tag, and so did a non_claims entry (a
+        working `<img src=x onerror=...>` renders exactly as readily as a `<script>` tag).
+
+        Every string field the block carries is set to the same payload in one call, the
+        same pattern TestRenderPairTable.test_every_field_is_escaped uses for the table: with
+        one shared payload, "<script>" not in rendered is total by construction rather than
+        an enumeration, since any one of the fields landing unescaped reintroduces the raw
+        substring somewhere in the fragment.
+
+        The four numeric fields (headline.count, headline.of, comparison.largest_lead,
+        comparison.opening_lead) are excluded here on purpose: they are forced through
+        render_number's "int" formatter, which raises TypeError on a non-int before any
+        interpolation happens (see test_figures_are_printed_through_render_number), so a
+        string payload there is a different failure mode, not a silent unescaped render.
+        """
         from metrology.cards import render_plain_language_finding
 
+        payload = "<script>alert(1)</script>"
         block = self.block()
-        block["lead"] = "<script>alert(1)</script>"
+        block["lead"] = payload
+        block["scope"] = payload
+        block["analogy"] = payload
+        block["task_level_note"] = payload
+        block["headline"]["unit"] = payload
+        block["comparison"]["unit"] = payload
+        block["comparison"]["largest_lead_label"] = payload
+        block["comparison"]["opening_lead_label"] = payload
+        block["non_claims"] = [payload, payload]
+
         rendered = render_plain_language_finding(block)
         assert "<script>" not in rendered
         assert "&lt;script&gt;" in rendered
+
+    def test_figures_are_printed_through_render_number(self, monkeypatch) -> None:
+        """PLAIN_LANGUAGE_SOURCES exists so this renderer and the Task 7 crosswalk resolve
+        every figure through the one mapping rather than each carrying its own formatting
+        rule that could drift from the other. Replacing figure()'s body with
+        escape(str(value)) renders byte-identical output for every value
+        plain_language_finding actually returns, because all four declared paths format as
+        plain integers today, and every other test in this class stays green under that
+        mutation. The coupling itself was untested.
+
+        metrology.cards.render_number is replaced with a sentinel that records every call
+        and returns a distinguishable string, so this proves both that the module-level
+        render_number is the one actually invoked, with the path PLAIN_LANGUAGE_SOURCES
+        declares and the exact value from the block, and that its return value is the one
+        that reaches the rendered fragment rather than being computed and discarded.
+        """
+        import metrology.cards as cards_module
+        from metrology.cards import render_plain_language_finding
+
+        calls: list[tuple[str, object]] = []
+
+        def sentinel(path: str, value) -> str:
+            calls.append((path, value))
+            return f"SENTINEL[{path}]={value}"
+
+        monkeypatch.setattr(cards_module, "render_number", sentinel)
+        block = self.block()
+        rendered = render_plain_language_finding(block)
+
+        expected = {
+            (PLAIN_LANGUAGE_SOURCES["headline.count"], block["headline"]["count"]),
+            (PLAIN_LANGUAGE_SOURCES["headline.of"], block["headline"]["of"]),
+            (
+                PLAIN_LANGUAGE_SOURCES["comparison.largest_lead"],
+                block["comparison"]["largest_lead"],
+            ),
+            (
+                PLAIN_LANGUAGE_SOURCES["comparison.opening_lead"],
+                block["comparison"]["opening_lead"],
+            ),
+        }
+        assert set(calls) == expected
+        for path, value in expected:
+            assert f"SENTINEL[{path}]={value}" in rendered
 
     def test_snapshot(self) -> None:
         from metrology.cards import render_plain_language_finding
