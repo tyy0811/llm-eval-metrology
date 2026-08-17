@@ -48,21 +48,30 @@ PROVENANCE = Provenance(
 
 REGISTERED_GAPS = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
 
-# A fixed, valid plain-language block. family_card_json takes a completed block rather than
-# building one (T3.4 Step 4, D3.4), so every caller must supply one; the renderer tests below
-# are about rendering and shape, not about plain_language's own content, so a constant stub
-# keeps that fixture noise out of tests with a different subject.
-PLAIN_LANGUAGE_STUB = plain_language_finding(
-    PlainLanguageInputs(
-        board_size=20,
-        family_size=19,
-        n_items=500,
-        distinguishable_count=0,
-        largest_lead=7,
-        opening_lead=10,
-        needs_per_instance_data=False,
+
+def plain_language_stub(family_size: int) -> dict:
+    """A self-consistent plain-language block for a family card fixture with this many
+    pairs. family_card_json takes a completed block rather than building one (T3.4 Step
+    4, D3.4), so every caller must supply one; the renderer tests below are about
+    rendering and shape, not about plain_language's own content, but a single constant
+    block shared across fixtures whose families differ would say "0 of 19" and "top 20"
+    beside a family that actually has 1 pair (TestFamilyCrossFieldInvariants). Nothing
+    checks that today, but it is internally contradictory data sitting in a fixture, and
+    the cheapest way to make Task 7's consistency rules pass on a fixture like that would
+    be to weaken the rule rather than fix the fixture. board_size is family_size plus
+    one, the same relationship the real registered board has.
+    """
+    return plain_language_finding(
+        PlainLanguageInputs(
+            board_size=family_size + 1,
+            family_size=family_size,
+            n_items=500,
+            distinguishable_count=0,
+            largest_lead=7,
+            opening_lead=10,
+            needs_per_instance_data=False,
+        )
     )
-)
 
 
 def registered_family():
@@ -124,7 +133,9 @@ class TestSnapshots:
     def test_family_card(self) -> None:
         assert_snapshot(
             "snapshot_family.html",
-            render_card(family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB)),
+            render_card(
+                family_card_json(registered_family(), plain_language=plain_language_stub(19))
+            ),
         )
 
     def test_rendering_is_byte_stable(self) -> None:
@@ -212,7 +223,7 @@ class TestRendererContract:
 
     def test_a_family_card_renders_no_verdict_stamp(self) -> None:
         rendered = render_card(
-            family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB)
+            family_card_json(registered_family(), plain_language=plain_language_stub(19))
         )
 
         assert "verdict-stamp" not in rendered
@@ -227,7 +238,7 @@ class TestRendererContract:
     def test_the_provenance_seal_is_always_present(self) -> None:
         for card in (
             pair_with(43),
-            family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB),
+            family_card_json(registered_family(), plain_language=plain_language_stub(19)),
         ):
             assert "0000000illustrative" in render_card(card)
 
@@ -249,7 +260,7 @@ class TestDocument:
         document = render_document(
             [
                 render_card(
-                    family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB)
+                    family_card_json(registered_family(), plain_language=plain_language_stub(19))
                 ),
                 render_card(pair_with(43)),
             ],
@@ -291,7 +302,7 @@ class TestValidationCoversEveryRenderedField:
             render_card(card)
 
     def test_a_missing_separability_basis_is_rejected(self) -> None:
-        card = family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB)
+        card = family_card_json(registered_family(), plain_language=plain_language_stub(19))
         del card["family_finding"]["separability_basis"]
 
         with pytest.raises(ValueError, match="separability_basis"):
@@ -492,7 +503,7 @@ class TestSeparableDefinitionPrefix:
     def test_the_face_states_separable_means(self) -> None:
         """D1.9 face requirement: the term is defined on the face, as in the reference."""
         rendered = render_card(
-            family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB)
+            family_card_json(registered_family(), plain_language=plain_language_stub(19))
         )
 
         assert "Separable means the family" in rendered
@@ -568,7 +579,7 @@ class TestFamilyCrossFieldInvariants:
         import copy
 
         card = copy.deepcopy(
-            family_card_json(registered_family(), plain_language=PLAIN_LANGUAGE_STUB)
+            family_card_json(registered_family(), plain_language=plain_language_stub(19))
         )
         for path, value in overrides.items():
             block, key = path.split("__")
@@ -600,7 +611,7 @@ class TestFamilyCrossFieldInvariants:
             provenance=PROVENANCE,
         )
 
-        assert render_card(family_card_json(family, plain_language=PLAIN_LANGUAGE_STUB))
+        assert render_card(family_card_json(family, plain_language=plain_language_stub(1)))
 
 
 class TestDecisionRuleDispatch:
@@ -715,7 +726,7 @@ class TestMultiSourceFamilyRendering:
             ),
             secondary_family_size=10,
         )
-        return family_card_json(family, plain_language=PLAIN_LANGUAGE_STUB)
+        return family_card_json(family, plain_language=plain_language_stub(19))
 
     def test_the_observed_source_is_rendered(self) -> None:
         rendered = render_card(self.multi_source_family())

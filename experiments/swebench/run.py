@@ -516,20 +516,36 @@ def main(argv: list[str] | None = None) -> int:
     payload = json.dumps(results, indent=2, sort_keys=True) + "\n"
     (RESULTS / "results.json").write_text(payload, encoding="utf-8")
 
-    plain_language = plain_language_finding(
-        PlainLanguageInputs(
-            board_size=aggregates["family_size"],
-            family_size=results["primary"]["family_size"],
-            n_items=aggregates["n_items"],
-            distinguishable_count=results["primary"]["headline"]["distinguishable_count"],
-            largest_lead=results["primary"]["largest_observed_gap"],
-            opening_lead=results["primary"]["first_rejection_gap_floor"],
-            needs_per_instance_data=results["primary"]["needs_per_instance_data"],
+    # The three premises plain_language_finding gates (zero headline, largest lead under
+    # the mark, no per-instance dependency) hold for the registered corpus by construction
+    # of the analytic derivation checked above. A ValueError here means the analysis
+    # produced a result the approved plain-language copy cannot honestly describe, which
+    # is exactly the class of thing RunFailure exists for: stop rather than report around
+    # it, rather than let an unrelated-looking traceback escape main().
+    try:
+        plain_language = plain_language_finding(
+            PlainLanguageInputs(
+                board_size=aggregates["family_size"],
+                family_size=results["primary"]["family_size"],
+                n_items=aggregates["n_items"],
+                distinguishable_count=results["primary"]["headline"]["distinguishable_count"],
+                largest_lead=results["primary"]["largest_observed_gap"],
+                opening_lead=results["primary"]["first_rejection_gap_floor"],
+                needs_per_instance_data=results["primary"]["needs_per_instance_data"],
+            )
         )
-    )
+    except ValueError as premise_violation:
+        raise RunFailure(
+            f"the plain-language finding layer cannot describe this run: {premise_violation}"
+        ) from premise_violation
+
+    family_card = family_card_json(family, plain_language=plain_language)
+    # Pair cards are validated inside illustrative_card; the family card was not
+    # previously validated at all before being written, only checked at render time.
+    validate_card(family_card)
 
     cards = {
-        "family": family_card_json(family, plain_language=plain_language),
+        "family": family_card,
         "pairs": {
             name: illustrative_card(family, entries, name)
             for name in illustrative_pair_names(entries)

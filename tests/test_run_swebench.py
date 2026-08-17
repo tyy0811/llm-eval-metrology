@@ -374,6 +374,15 @@ class TestMainWiring:
     #: only possible source a passing test can have come from.
     FETCH_DATE = "2020-02-29"
 
+    #: Board size 3, family size 2, n_items 500: three mutually distinct values, used below
+    #: to pin each plain-language figure to its own source rather than to a swap that still
+    #: renders. Gaps 4 and 5 both sit under this family's gateway floor of 7 (Holm at alpha
+    #: 0.05, m=2), so distinguishable_count stays 0 and largest_lead (5) stays under
+    #: opening_lead (7); the plain-language premise gates (T3.4 fix round 2) do not fire on
+    #: this board. The D2.7 counterexample board [100, 60, 54] reused elsewhere in this class
+    #: deliberately does trigger them and must not be used where a test needs `cards.json`.
+    SAFE_RESOLVED = [300, 296, 291]
+
     def build_inputs(self, tmp_path, resolved: list[int], substitutions=()):
         """A miniature experiment on disk: labels, aggregates, sidecar, and a matching manifest."""
         n_items = 500
@@ -465,11 +474,22 @@ class TestMainWiring:
         monkeypatch.setattr(run, "RESULTS", tmp_path / "results")
 
     def test_the_counterexample_runs_through_main(self, tmp_path, monkeypatch) -> None:
-        """Gaps 40 and 6. The superseded calculation raised "gives 1" here; D2.7 gives 2."""
+        """Gaps 40 and 6. The superseded calculation raised "gives 1" here; D2.7 gives 2.
+
+        This board's synthetic labels are noiseless (n01 is always 0 by construction of
+        build_inputs), so a nonzero separable_count on it always comes with an equal
+        resolved_count: the gap-40 pair rejects outright and Holm's step-down then admits
+        the gap-6 pair too. distinguishable_count is therefore 2, which the plain-language
+        premise gate (T3.4 fix round 2) correctly refuses to describe with copy that
+        assumes zero. main() halts with RunFailure after results.json is written and
+        before cards.json, which is exactly where this assertion reads from, so the
+        D2.7 property under test is still verified on the live path.
+        """
         derived, manifests = self.build_inputs(tmp_path, [100, 60, 54])
         self.point_at(tmp_path, monkeypatch, derived, manifests)
 
-        assert run.main([]) == 0
+        with pytest.raises(run.RunFailure, match="distinguishable_count"):
+            run.main([])
 
         results = json.loads((tmp_path / "results" / "results.json").read_text(encoding="utf-8"))
         assert results["primary"]["separable_count"] == 2
@@ -482,8 +502,12 @@ class TestMainWiring:
         else, including a different literal in a form a grep cannot see. `FETCH_DATE` is not the
         real committed "2026-07-29", so the manifest is the only place a passing run could have
         gotten it from.
+
+        Uses SAFE_RESOLVED rather than the D2.7 counterexample board: this test needs
+        `main()` to reach cards.json, which the counterexample board's nonzero headline
+        now correctly prevents (see test_the_counterexample_runs_through_main).
         """
-        derived, manifests = self.build_inputs(tmp_path, [100, 60, 54])
+        derived, manifests = self.build_inputs(tmp_path, self.SAFE_RESOLVED)
         self.point_at(tmp_path, monkeypatch, derived, manifests)
 
         assert run.main([]) == 0
@@ -492,6 +516,53 @@ class TestMainWiring:
         assert cards["family"]["provenance"]["fetch_date"] == self.FETCH_DATE
         for card in cards["pairs"].values():
             assert card["provenance"]["fetch_date"] == self.FETCH_DATE
+
+    def test_the_plain_language_block_pins_all_three_sources_on_the_live_path(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """TestPlainLanguageIsWired (test_run_swebench.py) reads a committed artifact and
+        checks `headline`/`comparison` numerics only, never `lead`, `scope`, or `analogy`,
+        which is exactly where `board_size` (aggregates, the one field sourced from the
+        other document) and `n_items` appear. A mis-wiring like
+        `board_size=aggregates["n_items"]` would render "no neighboring top-500 pair" with
+        `headline` still correct and that suite green, and nothing under `make check`
+        regenerates the committed artifact, so a `run.py` edit without a manual
+        regeneration would be invisible there. SAFE_RESOLVED gives board_size=3,
+        family_size=2, and n_items=500: three mutually distinct values, so no swap between
+        them can survive all three assertions below.
+        """
+        derived, manifests = self.build_inputs(tmp_path, self.SAFE_RESOLVED)
+        self.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        assert run.main([]) == 0
+
+        cards = json.loads((tmp_path / "results" / "cards.json").read_text(encoding="utf-8"))
+        block = cards["family"]["family_finding"]["plain_language"]
+        assert "top-3" in block["lead"]
+        assert block["headline"]["of"] == 2
+        assert "500 tasks" in block["scope"]
+
+    def test_the_family_card_is_validated_before_it_is_written(self, tmp_path, monkeypatch) -> None:
+        """validate_card was previously called only inside illustrative_card, so pair
+        cards were checked and the family card went into cards.json unchecked, with its
+        only check happening at render time. A wrapper records every card validate_card
+        is called on and asserts a family card was among them, on the live path rather
+        than by grepping source text for the call."""
+        derived, manifests = self.build_inputs(tmp_path, self.SAFE_RESOLVED)
+        self.point_at(tmp_path, monkeypatch, derived, manifests)
+
+        seen_kinds = []
+        original_validate_card = run.validate_card
+        monkeypatch.setattr(
+            run,
+            "validate_card",
+            lambda card: (seen_kinds.append(card["card_kind"]), original_validate_card(card))[1],
+        )
+
+        assert run.main([]) == 0
+
+        assert reporting.CARD_FAMILY in seen_kinds
+        assert reporting.CARD_PAIR in seen_kinds
 
     def test_a_substitution_halts_main_before_any_analysis(self, tmp_path, monkeypatch) -> None:
         derived, manifests = self.build_inputs(
@@ -604,8 +675,12 @@ class TestSubstitutionHaltsBeforeAnyPerInstanceWork:
         assert called == [], "discordance was computed under a premise known to be false"
 
     def test_a_clean_set_still_reaches_the_analysis(self, tmp_path, monkeypatch) -> None:
+        """Uses SAFE_RESOLVED, not the D2.7 counterexample board: this test needs
+        `main() == 0` in full contrast to the halted cases above, and the counterexample
+        board's nonzero headline now halts main() for an unrelated reason (the
+        plain-language premise gate, T3.4 fix round 2)."""
         wiring = TestMainWiring()
-        derived, manifests = wiring.build_inputs(tmp_path, [100, 60, 54])
+        derived, manifests = wiring.build_inputs(tmp_path, TestMainWiring.SAFE_RESOLVED)
         wiring.point_at(tmp_path, monkeypatch, derived, manifests)
 
         loaded = []

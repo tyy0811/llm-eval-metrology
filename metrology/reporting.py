@@ -623,7 +623,29 @@ class PlainLanguageInputs:
 
 
 def plain_language_finding(inputs: PlainLanguageInputs) -> dict:
-    """The finding layer, as a pure function of the registered quantities."""
+    """The finding layer, as a pure function of the registered quantities.
+
+    Three premises gate the copy, one per place the fixed text asserts something the
+    numbers alone do not guarantee. `_LEAD` hardcodes "no neighboring pair showed a
+    reliable difference" and never reads `distinguishable_count`; `_ANALOGY` hardcodes
+    "None reached the mark, so none could qualify" and never compares `largest_lead`
+    against `opening_lead`; `_TASK_LEVEL_NOTE` hardcodes "the headline follows from the
+    published totals alone", gated by `needs_per_instance_data` below. Skipping any one
+    of the three would certify a sentence a run's own numbers, three keys away or inside
+    the same string, directly contradict.
+    """
+    if inputs.distinguishable_count != 0:
+        raise ValueError(
+            "distinguishable_count is nonzero, so the lead's claim that no neighboring "
+            "pair showed a reliable difference does not hold; rendering it would "
+            "contradict the headline count shown three keys below it"
+        )
+    if inputs.largest_lead >= inputs.opening_lead:
+        raise ValueError(
+            "largest_lead has reached or passed opening_lead, so the analogy's claim "
+            "that no neighboring pair reached the mark does not hold; rendering it "
+            "would contradict itself inside one string"
+        )
     if inputs.needs_per_instance_data:
         raise ValueError(
             "needs_per_instance_data is true, so the task-level note's premise does not "

@@ -48,22 +48,31 @@ PROVENANCE = Provenance(
     deviations=("D4 harness comparability",),
 )
 
-# A fixed, valid plain-language block for tests below that build a family card to exercise
-# something else (shape, verdict rejection, rendering) and are indifferent to its content.
-# family_card_json takes a completed block rather than building one (Step 4, D3.4), so every
-# caller must supply one; these tests do not exercise plain_language itself, so a constant
-# stub keeps the fixture noise out of tests that are about a different contract.
-PLAIN_LANGUAGE_STUB = plain_language_finding(
-    PlainLanguageInputs(
-        board_size=20,
-        family_size=19,
-        n_items=500,
-        distinguishable_count=0,
-        largest_lead=7,
-        opening_lead=10,
-        needs_per_instance_data=False,
+
+def plain_language_stub(family_size: int) -> dict:
+    """A self-consistent plain-language block for a family card fixture with this many
+    pairs, for tests below that build a family card to exercise something else (shape,
+    verdict rejection, rendering) and are indifferent to plain_language's own content.
+
+    family_card_json takes a completed block rather than building one (Step 4, D3.4), so
+    every caller must supply one. A single constant block shared across fixtures whose
+    families differ would say "0 of 19" and "top 20" beside a family that actually has 1
+    or 3 pairs: nothing checks that today, but it is internally contradictory data sitting
+    in a fixture, and the cheapest way to make Task 7's consistency rules pass on a fixture
+    like that would be to weaken the rule rather than fix the fixture. board_size is
+    family_size plus one, the same relationship the real registered board has.
+    """
+    return plain_language_finding(
+        PlainLanguageInputs(
+            board_size=family_size + 1,
+            family_size=family_size,
+            n_items=500,
+            distinguishable_count=0,
+            largest_lead=7,
+            opening_lead=10,
+            needs_per_instance_data=False,
+        )
     )
-)
 
 
 def counts(name: str, n01: int, n10: int, n: int = 500) -> PairCounts:
@@ -240,7 +249,7 @@ class TestFamilyCardJson:
             build_family_report(
                 members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
             ),
-            plain_language=PLAIN_LANGUAGE_STUB,
+            plain_language=plain_language_stub(19),
         )
 
     def test_family_card_carries_a_family_finding(self) -> None:
@@ -310,7 +319,7 @@ class TestSchemaGuards:
             build_family_report(
                 members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
             ),
-            plain_language=PLAIN_LANGUAGE_STUB,
+            plain_language=plain_language_stub(3),
         )
         card["verdict"] = VERDICT_NOT_RESOLVED
 
@@ -325,7 +334,7 @@ class TestSchemaGuards:
             build_family_report(
                 members, instrument="hidden-tests", alpha=0.05, provenance=PROVENANCE
             ),
-            plain_language=PLAIN_LANGUAGE_STUB,
+            plain_language=plain_language_stub(3),
         )
         card["family_finding"]["limit"]["inference"] = "NOT RESOLVED at any discordance"
 
@@ -599,7 +608,7 @@ class TestFamilyCardRequiredShape:
                 provenance=PROVENANCE,
                 secondary_family_size=10,
             ),
-            plain_language=PLAIN_LANGUAGE_STUB,
+            plain_language=plain_language_stub(19),
         )
 
     def test_conditionality_is_stated(self) -> None:
@@ -735,7 +744,7 @@ class TestSeparabilityLabelling:
                 provenance=PROVENANCE,
                 secondary_family_size=10,
             ),
-            plain_language=PLAIN_LANGUAGE_STUB,
+            plain_language=plain_language_stub(19),
         )
 
     def test_the_basis_of_separability_is_stated(self) -> None:
@@ -1426,6 +1435,34 @@ class TestPlainLanguageFinding:
         with pytest.raises(ValueError, match="needs_per_instance_data"):
             plain_language_finding(self.inputs(needs_per_instance_data=True))
 
+    def test_the_lead_premise_requires_a_zero_headline(self) -> None:
+        """_LEAD hardcodes "no neighboring top-N pair showed a reliable difference" and
+        never reads distinguishable_count itself. Without this gate a nonzero count would
+        render a lead sentence the headline three keys below it directly contradicts."""
+        from metrology.reporting import plain_language_finding
+
+        with pytest.raises(ValueError, match="distinguishable_count"):
+            plain_language_finding(self.inputs(distinguishable_count=3))
+
+    def test_the_analogy_premise_requires_the_lead_under_the_mark(self) -> None:
+        """_ANALOGY hardcodes "None reached the mark, so none could qualify" and never
+        compares largest_lead against opening_lead itself. Without this gate a
+        largest_lead at or above opening_lead would render an analogy that contradicts
+        itself inside one string."""
+        from metrology.reporting import plain_language_finding
+
+        with pytest.raises(ValueError, match="largest_lead"):
+            plain_language_finding(self.inputs(largest_lead=15, opening_lead=10))
+
+    def test_the_analogy_premise_rejects_a_lead_that_exactly_reaches_the_mark(self) -> None:
+        """ "Reached the mark" means largest_lead >= opening_lead, not strictly greater:
+        needing "at least" opening_lead makes equality a reach. An off-by-one boundary
+        here would certify "None reached the mark" on a run where one did."""
+        from metrology.reporting import plain_language_finding
+
+        with pytest.raises(ValueError, match="largest_lead"):
+            plain_language_finding(self.inputs(largest_lead=10, opening_lead=10))
+
     def test_the_non_claims_are_exact_and_ordered(self) -> None:
         from metrology.reporting import plain_language_finding
 
@@ -1439,19 +1476,20 @@ class TestPlainLanguageFinding:
 
     def test_every_figure_has_a_declared_source_path(self) -> None:
         """One table drives the rule and the rendering. Two copies would let the validated
-        path and the rendered path drift while both stayed individually correct."""
+        path and the rendered path drift while both stayed individually correct.
+
+        All four leaves are pinned to their exact registered path, not just checked for
+        presence: presence alone would let comparison.largest_lead and
+        comparison.opening_lead be repointed at any other registered path (including each
+        other's) with this test still green.
+        """
         from metrology.reporting import PLAIN_LANGUAGE_SOURCES, plain_language_finding
 
         block = plain_language_finding(self.inputs())
-        for leaf in (
-            "headline.count",
-            "headline.of",
-            "comparison.largest_lead",
-            "comparison.opening_lead",
-        ):
-            assert leaf in PLAIN_LANGUAGE_SOURCES
-        assert PLAIN_LANGUAGE_SOURCES["headline.count"] == (
-            "results:primary.headline.distinguishable_count"
-        )
-        assert PLAIN_LANGUAGE_SOURCES["headline.of"] == "results:primary.family_size"
+        assert PLAIN_LANGUAGE_SOURCES == {
+            "headline.count": "results:primary.headline.distinguishable_count",
+            "headline.of": "results:primary.family_size",
+            "comparison.largest_lead": "results:primary.largest_observed_gap",
+            "comparison.opening_lead": "results:primary.first_rejection_gap_floor",
+        }
         assert block["headline"]["count"] == 0
