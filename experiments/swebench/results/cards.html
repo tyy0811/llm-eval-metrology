@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Experiment 1: SWE-bench Verified neighboring-pair finding</title>
+<style>
+:root {
+  --ground: #f6f8fa;
+  --panel: #ffffff;
+  --ink: #161b22;
+  --muted: #5c6b7a;
+  --rule: #d8dee6;
+  --rule-strong: #b6c0cc;
+  --accent: #2f6b75;
+  --state-resolved: #1d6f4e;
+  --state-open: #8a6516;
+  --state-equivalent: #2e5a8a;
+  --warn-ground: #fdf6e3;
+  --warn-ink: #6b4e0f;
+  --track: #e4e9ef;
+  --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #11141a; --panel: #171c24; --ink: #e6ebf2; --muted: #9aa7b5;
+    --rule: #2a323d; --rule-strong: #3d4854; --accent: #5fb3bd;
+    --state-resolved: #4fbc8a; --state-open: #d6a640; --state-equivalent: #6f9fd8;
+    --warn-ground: #241d0c; --warn-ink: #e0c67c; --track: #232a34;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #11141a; --panel: #171c24; --ink: #e6ebf2; --muted: #9aa7b5;
+  --rule: #2a323d; --rule-strong: #3d4854; --accent: #5fb3bd;
+  --state-resolved: #4fbc8a; --state-open: #d6a640; --state-equivalent: #6f9fd8;
+  --warn-ground: #241d0c; --warn-ink: #e0c67c; --track: #232a34;
+}
+:root[data-theme="light"] {
+  --ground: #f6f8fa; --panel: #ffffff; --ink: #161b22; --muted: #5c6b7a;
+  --rule: #d8dee6; --rule-strong: #b6c0cc; --accent: #2f6b75;
+  --state-resolved: #1d6f4e; --state-open: #8a6516; --state-equivalent: #2e5a8a;
+  --warn-ground: #fdf6e3; --warn-ink: #6b4e0f; --track: #e4e9ef;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font-family: var(--sans); line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+.page { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; display: flex; flex-direction: column; gap: 1.75rem; }
+
+.stamp-illustrative {
+  background: var(--warn-ground); color: var(--warn-ink);
+  border: 1px solid currentColor; border-radius: 2px;
+  padding: 0.7rem 0.9rem; font-family: var(--mono); font-size: 0.78rem;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.stamp-illustrative strong { letter-spacing: 0.12em; }
+.stamp-illustrative span { display: block; text-transform: none; letter-spacing: 0; margin-top: 0.35rem; font-size: 0.8rem; }
+
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 3px; }
+.card > * { padding: 1.1rem 1.25rem; }
+.card > * + * { border-top: 1px solid var(--rule); }
+.card-rail { height: 3px; padding: 0; border: 0; background: var(--accent); }
+.card-rail.is-open { background: var(--state-open); }
+
+.eyebrow {
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 0.5rem;
+}
+.eyebrow::after { content: attr(data-element); color: var(--accent); margin-left: 0.6rem; opacity: 0.75; }
+
+.banner-figure { font-family: var(--mono); font-size: clamp(1.6rem, 6vw, 2.4rem); line-height: 1.1; margin: 0; text-wrap: balance; }
+.banner-figure b { font-weight: 700; }
+.banner-sub { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.9rem; }
+.scope-line { margin: 0.6rem 0 0; font-size: 0.85rem; color: var(--muted); border-left: 2px solid var(--rule-strong); padding-left: 0.7rem; }
+
+.verdict-stamp {
+  display: inline-block; font-family: var(--mono); font-weight: 700;
+  font-size: 1.5rem; letter-spacing: 0.06em; color: var(--state-open);
+  border: 2px solid currentColor; border-radius: 2px; padding: 0.3rem 0.7rem;
+}
+.reading { margin: 0.75rem 0 0; font-size: 1rem; }
+
+.pairing { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; font-size: 0.86rem; }
+.pairing dt { color: var(--muted); }
+.pairing dd { margin: 0; font-family: var(--mono); }
+
+.strip { display: flex; height: 1.5rem; border: 1px solid var(--rule-strong); border-radius: 2px; overflow: hidden; }
+.strip-a { background: var(--accent); }
+.strip-b { background: var(--track); }
+.strip-legend { display: flex; flex-wrap: wrap; gap: 0.2rem 1.25rem; justify-content: space-between; margin: 0.45rem 0 0; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.strip-legend span { overflow-wrap: anywhere; }
+
+.ruler { margin-top: 1.1rem; }
+.ruler-track { position: relative; height: 2.5rem; }
+.ruler-line { position: absolute; top: 1.35rem; left: 0; right: 0; height: 2px; background: var(--rule-strong); }
+.ruler-mark { position: absolute; top: 0; transform: translateX(-50%); text-align: center; }
+.ruler-mark i { display: block; width: 2px; height: 1.35rem; margin: 0 auto; background: currentColor; }
+.ruler-mark span { font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+.ruler-mark.observed { color: var(--state-open); }
+.ruler-mark.required { color: var(--accent); }
+/* At the extremes a centred label would overhang the track. The renderer applies these when a
+   marker sits at 0 (a balanced split, net edge 0) or at the far end (all disagreement one way). */
+.ruler-mark.at-start { transform: translateX(0); text-align: left; }
+.ruler-mark.at-start i { margin: 0 auto 0 0; }
+.ruler-mark.at-end { transform: translateX(-100%); text-align: right; }
+.ruler-mark.at-end i { margin: 0 0 0 auto; }
+.ruler-scale { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
+.what-would-it-take { margin: 1rem 0 0; padding: 0.7rem 0.85rem; background: var(--track); border-radius: 2px; font-size: 0.9rem; }
+
+details { font-size: 0.86rem; }
+summary { cursor: pointer; font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+details[open] summary { margin-bottom: 0.7rem; }
+.kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 1rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+
+.seal { display: flex; flex-wrap: wrap; gap: 0.35rem 1.5rem; font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
+.seal b { color: var(--ink); font-weight: 500; }
+.note { font-size: 0.82rem; color: var(--muted); }
+h1 { font-size: 1.05rem; margin: 0 0 0.2rem; }
+h2.eyebrow { font-size: 0.68rem; font-weight: 600; }
+
+/* State variants for the verdict stamp and rail. The reference shows only the unresolved state,
+   so these use the --state-resolved token it already defines rather than introducing new colour. */
+.card-rail.is-resolved { background: var(--state-resolved); }
+.verdict-stamp.is-resolved { color: var(--state-resolved); }
+.verdict-stamp.is-open { color: var(--state-open); }
+
+/* Nineteen-row pair table (T3.4), approved as fixtures/table_reference.html before any renderer
+   existed (D1.3).
+   The fragment is a sibling of the cards, not a child of one: on the page it lands between the
+   family card above and the pair cards below. Left bare it would sit directly on --ground, the
+   only block on the page not on a surface, which reads as a hole between two card groups rather
+   than as a member of the set, and reads that way most strongly in dark mode where --ground is
+   the darker of the two. So the block borrows the card's own surface: same --panel, same 1px
+   --rule border, same 3px radius, same 1.1rem 1.25rem padding scale.
+   It is not a .card. It carries no rail, no eyebrow and no provenance seal, and the .card > *
+   cascade would put section padding and a hairline around every element the fragment contains,
+   which the table and its disclosure note do not want. */
+.pair-table-block {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1.1rem 1.25rem;
+}
+
+/* The table scrolls inside its own container, so a narrow screen scrolls the table and never the
+   page. The note below is deliberately outside this element: prose in a horizontal scroll
+   container slides out of view when the reader scrolls the table.
+   The container carries no margin of its own, unlike the plan's sketch: the block's
+   1.1rem 1.25rem padding already sets the inset, and the plan's 0.75rem margin here would stand
+   the table 30.6px below the block's top edge against the 18.6px it leaves at the bottom
+   (measured both ways), so the fragment would stop sitting on the card's inset; at the bottom
+   that margin collapses over the note's own 0.55rem and sets that gap instead of the note. */
+.pair-table-scroll { overflow-x: auto; }
+
+/* The container is a tab stop so it can be scrolled from the keyboard. Chrome and Firefox make a
+   scrolling container focusable by themselves, Safari does not, so without tabindex a
+   keyboard-only Safari user cannot reach the columns that are off screen at all. The ring reuses
+   summary:focus-visible, the sheet's only other focus style. Chrome's own focusability is
+   conditional on the container actually overflowing: measured without this attribute, it was
+   focusable at 320px and 375px, where the table scrolls, and not at 768px, where it fits. An
+   explicit tabindex makes it a tab stop at every width, which is the price of doing this without
+   script. */
+.pair-table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.pair-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8125rem;
+}
+
+/* The caption is this block's section label, so it takes the sheet's existing eyebrow language
+   rather than introducing a second heading style. It is also kept short on purpose: a caption box
+   is as wide as the table, so a long one is clipped by the scroll container on a narrow screen
+   instead of wrapping into view.
+   The 0.6rem below it is a hand-set optical value rather than the plan's 0.4rem, which was sized
+   for a bold sans caption sitting straight on the header row; an uppercase tracked label needs
+   more air above the 2px rule. */
+.pair-table caption {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: left;
+  padding-bottom: 0.6rem;
+}
+
+/* Headers are labels, so they take the sans face like every other label in the sheet, and they
+   wrap: five nowrap headers overflow at the 46rem page width, which would put a scrollbar under
+   the table on a desktop screen that has room for it. Measured at that width, balanced wrapping
+   breaks "observed p-value" and "Holm-adjusted p-value" after the word, so neither of those two
+   terms splits at its own hyphen. It does not do that for every header, and it is not a rule:
+   "resolved-count gap" splits at its hyphen at every width measured, "resolved-" then
+   "count gap" at the page width and "resolved-" then "count " then "gap" once the columns are
+   squeezed to the table's 478px minimum, because the alternative leaves a three-character last
+   line. At that minimum "Holm-adjusted" splits at its hyphen too. The strings come from
+   FINDINGS_COLUMNS and are not ours to reword, so those breaks stay. Cells never wrap, so no
+   figure breaks across lines. */
+.pair-table thead th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 2px solid var(--rule-strong);
+  padding: 0.35rem 0.6rem;
+  vertical-align: bottom;
+  text-wrap: balance;
+}
+
+/* Values take the mono face, as every figure on a card does. */
+.pair-table tbody td {
+  font-family: var(--mono);
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+
+.pair-table tbody tr:last-child td { border-bottom: none; }
+
+/* The outer cells drop their inner padding so the first column, the caption and the note beneath
+   the table all line up on the block's padding edge. */
+.pair-table th:first-child, .pair-table td:first-child { padding-left: 0; }
+.pair-table th:last-child, .pair-table td:last-child { padding-right: 0; }
+
+/* The 0.55rem top margin is hand-set too, and larger than the plan's 0.4rem because the last row
+   drops its hairline, so this gap is the only thing holding the note off the table's final row. */
+.pair-table-note {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0.55rem 0 0;
+}
+
+/* Review annotations, the same device as .eyebrow::after and inert for the same reason: the
+   reference names each part of the fragment with data-element, and the renderer emits no such
+   attribute. */
+.pair-table-block [data-element]::after {
+  content: attr(data-element);
+  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); margin-left: 0.6rem; opacity: 0.75;
+}
+
+/* The plain-language finding layer (T3.4), approved as fixtures/page_reference.html before any
+   renderer for it existed (D1.3).
+   It is the document's first reading, and it rides on the card surface rather than sitting bare
+   on --ground: the apparatus below it is a bordered region, and a bare finding layer above a
+   bordered one would make the apparatus read as the primary object on the page. So the element
+   carries .card as well as .finding and takes the card's surface, section padding and hairlines
+   unchanged; .finding adds only what the card language has no word for.
+   It is not a card in the card-set sense, and the differences are all absences: no eyebrow, no
+   verdict stamp, no provenance seal, because Tier 1 shows no provenance at all. What separates it
+   from the cards below is that it is first, that its lead sentence is the largest prose on the
+   page, and that the banner figure is the only figure in it. */
+.finding-lead {
+  margin: 0 0 0.9rem;
+  font-size: 1.15rem;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+/* The lead against the mark. Contract item 3 asks the reader to see 7 falling short of 10 rather
+   than read it, so the two measures are drawn on one scale whose full length is the mark: the
+   observed bar stops at seven tenths of a track the mark fills, and the shortfall is what is
+   left over.
+   The bar itself is .strip, the sheet's existing proportional bar, not a second one, and the
+   colours are the ruler's mapping: --state-open for the observed measure, --accent for the
+   requirement.
+   The ruler's layout is deliberately not reused, and the reason is measured rather than aesthetic.
+   The pair card's markers read "observed 7" and "required 25", 10 and 11 characters, and sit
+   either side of one track. These read "largest lead" and "minimum opening lead", which are the
+   contract's words and not ours to shorten; at the ruler's 0.72rem mono the longer of the two is
+   about 200px against the 230px of track a 320px viewport leaves, so two centred marker labels on
+   one line overlap at every narrow width this document has to work at. One row per measure gives
+   each label a whole line to wrap into. */
+.lead-scale { margin: 0 0 0.5rem; }
+.lead-scale-row + .lead-scale-row { margin-top: 0.85rem; }
+.lead-scale-row.is-observed .strip-a { background: var(--state-open); }
+
+/* The two non-claims are limits on the finding, not findings, so they take the scope line's
+   language: the 2px --rule-strong left border the sheet already uses to bound a claim on the
+   family card, and the muted ink that goes with it. A list rather than a paragraph because there
+   are exactly two bounds and a reader who skims this section has to come away with two. */
+.non-claims { margin: 0; padding: 0; list-style: none; }
+.non-claims li {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border-left: 2px solid var(--rule-strong);
+  padding-left: 0.7rem;
+}
+.non-claims li + li { margin-top: 0.7rem; }
+
+/* The technical apparatus (T3.4): the collapsed half of the document hierarchy.
+   A divider was the earlier proposal and it fails the presentation contract, because it leaves
+   the duplicate headline, the p-values, the system identifiers and the provenance immediately
+   visible, which is exactly what the contract moves out of the first reading. Only a closed
+   details makes that first reading uncontested. It is closed by default and fully interactive.
+   It is a bordered region rather than a bare summary line for two reasons. Closed, it is the one
+   control on the page, and a single line of small uppercase mono is easy to skim past; the box
+   gives the reader something to aim at. Open, the same box is the boundary of the apparatus, so
+   it is visible where the technical half starts and ends around three components that each carry
+   a surface of their own.
+   It takes no background: the cards and the table block inside it are already on --panel, and a
+   --panel region holding --panel components flattens both. */
+.technical-apparatus {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 1.1rem 1.25rem;
+  /* The sheet sizes `details` at 0.86rem for the small disclosures inside a card. This one wraps
+     whole cards, so it stays at the page's size and lets each component keep its own scale. */
+  font-size: 1rem;
+}
+
+/* The page gap, applied inside the region: open, the components are siblings here exactly as they
+   are siblings of main.page in the rendered document. */
+.technical-apparatus > * + * { margin-top: 1.75rem; }
+</style>
+</head>
+<body>
+<main class="page">
+<article class="card finding" aria-labelledby="finding-lead">
+  <hr class="card-rail">
+  <section>
+    <p class="finding-lead" id="finding-lead">Using the statistical test chosen in advance, no neighboring top-20 pair showed a reliable difference.</p>
+    <p class="banner-figure"><b>0 of 19</b> neighboring pairs showed a reliable difference</p>
+    <p class="scope-line">The top 20 creates 19 neighboring comparisons, each measured on 500 tasks.</p>
+  </section>
+  <section>
+    <div class="lead-scale">
+      <div class="lead-scale-row is-observed">
+        <div class="strip" aria-hidden="true">
+          <div class="strip-a" style="flex: 7;"></div>
+          <div class="strip-b" style="flex: 3;"></div>
+        </div>
+        <p class="strip-legend"><span>largest lead</span><span>7 tasks</span></p>
+      </div>
+      <div class="lead-scale-row is-mark">
+        <div class="strip" aria-hidden="true">
+          <div class="strip-a" style="flex: 10;"></div>
+        </div>
+        <p class="strip-legend"><span>minimum opening lead</span><span>10 tasks</span></p>
+      </div>
+    </div>
+    <p class="reading">It works like a qualifying mark. Before a difference between two neighboring systems could count as reliable, that pair needed a lead of at least 10 tasks. No neighboring pair anywhere in the top 20 led by more than 7. None reached the mark, so none could qualify. Reaching the mark would not have settled a comparison on its own; it is the point at which the question becomes answerable at all.</p>
+    <p class="reading">Task-by-task results add detail but cannot change this. A pair&#x27;s lead sets a ceiling on how strong its evidence can get, and a lead of 7 stays under the mark even if every task the two systems disagreed on had gone the same way. The headline follows from the published totals alone.</p>
+  </section>
+  <section>
+    <ul class="non-claims"><li>This does not show the systems are equivalent. Not finding a difference is not the same as showing there is none, and this experiment registered no equivalence test.</li><li>This does not cover systems that are not neighbors. Only neighboring pairs were compared, so it says nothing about how rank 1 compares with rank 20.</li></ul>
+  </section>
+</article>
+
+<details class="technical-apparatus">
+<summary>Show statistical details and audit trail</summary>
+<article class="card" aria-labelledby="family-summary">
+  <hr class="card-rail">
+  <section>
+    <h2 class="eyebrow" id="family-summary">Benchmark resolving power</h2>
+    <p class="banner-figure"><b>0 of 19</b> adjacent pairs separable</p>
+    <p class="banner-sub">Separable means the family&#x27;s Holm procedure could reject this pair under best-case overlaps; not separable is a stronger result than an observed test merely not rejecting</p>
+    <p class="scope-line">Adjacent pairs only. Non-adjacent comparisons are out of scope.</p>
+  </section>
+  <section>
+    <p class="eyebrow">The limit, and what follows from it</p>
+    <dl class="pairing">
+      <dt>Family gateway floor</dt><dd>10</dd>
+      <dt>Largest observed adjacent gap</dt><dd>7</dd>
+    </dl>
+    <p class="what-would-it-take">Every adjacent gap sits below the gateway floor of 10, so no pair can open the family and none can separate at any discordance configuration.</p>
+  </section>
+  <section>
+    <p class="eyebrow">Observed, for contrast</p>
+    <dl class="pairing">
+      <dt>Resolved by the observed test</dt><dd>0 of 19</dd>
+      <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+      <dt>Separability basis</dt><dd>Holm applied to per-pair minimum attainable p-values</dd>
+    </dl>
+  </section>
+  <section>
+    <details>
+      <summary>Statistics</summary>
+        <dl class="kv">
+          <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+          <dt>Convention</dt><dd>doubled-tail</dd>
+          <dt>Correction</dt><dd>Holm, alpha 0.05</dd>
+          <dt>First critical value</dt><dd>0.002631578947368421</dd>
+          <dt>Secondary family size</dt><dd>10</dd>
+          <dt>Secondary gateway floor</dt><dd>9</dd>
+          <dt>Conditional on</dt><dd>integrity gate 3 passes, so derived counts match published rates; the coverage rule substitutes no entry</dd>
+        </dl>
+    </details>
+  </section>
+  <section>
+    <p class="eyebrow">Provenance</p>
+      <div class="seal">
+        <span>source <b>SWE-bench/swe-bench.github.io</b></span>
+        <span>revision <b>7c4289f30aa1a1c63c2e2a25aae30c16d92b5114</b></span>
+        <span>fetched <b>2026-07-29</b></span>
+        <span>headline caveats <b>none</b></span>
+        <span>observed figure caveats <b>D4 harness comparability</b></span>
+        <span>observed figures from <b>SWE-bench/experiments 2f15350cd32becc4569e0d826361048555b605c0</b></span>
+      </div>
+  </section>
+</article>
+
+<div class="pair-table-block"><div class="pair-table-scroll" tabindex="0" role="region" aria-label="Pair table"><table class="pair-table"><caption>Every adjacent pair, as tested</caption><thead><tr><th scope="col">pair</th><th scope="col">resolved-count gap</th><th scope="col">observed discordance</th><th scope="col">observed p-value</th><th scope="col">Holm-adjusted p-value</th></tr></thead><tbody><tr><td>rank_1_vs_2</td><td>0</td><td>36</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_2_vs_3</td><td>2</td><td>64</td><td>0.901</td><td>1.000</td></tr><tr><td>rank_3_vs_4</td><td>7</td><td>65</td><td>0.457</td><td>1.000</td></tr><tr><td>rank_4_vs_5</td><td>3</td><td>53</td><td>0.784</td><td>1.000</td></tr><tr><td>rank_5_vs_6</td><td>0</td><td>56</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_6_vs_7</td><td>0</td><td>66</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_7_vs_8</td><td>2</td><td>64</td><td>0.901</td><td>1.000</td></tr><tr><td>rank_8_vs_9</td><td>3</td><td>63</td><td>0.801</td><td>1.000</td></tr><tr><td>rank_9_vs_10</td><td>0</td><td>56</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_10_vs_11</td><td>1</td><td>75</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_11_vs_12</td><td>0</td><td>66</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_12_vs_13</td><td>2</td><td>68</td><td>0.904</td><td>1.000</td></tr><tr><td>rank_13_vs_14</td><td>2</td><td>36</td><td>0.868</td><td>1.000</td></tr><tr><td>rank_14_vs_15</td><td>0</td><td>52</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_15_vs_16</td><td>1</td><td>57</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_16_vs_17</td><td>0</td><td>56</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_17_vs_18</td><td>1</td><td>59</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_18_vs_19</td><td>0</td><td>74</td><td>1.000</td><td>1.000</td></tr><tr><td>rank_19_vs_20</td><td>0</td><td>80</td><td>1.000</td><td>1.000</td></tr></tbody></table></div><p class="pair-table-note">The observed discordance and both p-value columns read per-instance artifacts and carry the D4 harness comparability caveat: submissions do not record their harness version. The pair identity and the resolved-count gap derive from published aggregates and do not.</p></div>
+
+<article class="card" aria-labelledby="pair-rank_1_vs_2-927a2eca">
+  <hr class="card-rail is-open">
+  <section>
+    <h2 class="eyebrow" id="pair-rank_1_vs_2-927a2eca">Pair verdict: Ranks 1 and 2</h2>
+    <p class="verdict-stamp is-open">NOT RESOLVED</p>
+    <p class="reading">These two systems disagree on 36 of 500 instances, and the disagreement runs 18 to 18. That edge of 0 does not resolve the comparison at this correction level; the observed test does not determine which system is better.</p>
+  </section>
+  <section>
+    <p class="eyebrow">Where they disagree</p>
+      <div class="strip" role="img" aria-label="36 disagreements, 18 favour 20251215_livesweagent_claude-opus-4-5 and 18 favour 20251205_sonar-foundation-agent_claude-opus-4-5">
+        <div class="strip-a" style="flex: 18;"></div>
+        <div class="strip-b" style="flex: 18;"></div>
+      </div>
+      <p class="strip-legend"><span>18 favour 20251215_livesweagent_claude-opus-4-5</span><span>18 favour 20251205_sonar-foundation-agent_claude-opus-4-5</span></p>
+      <div class="ruler">
+        <p class="eyebrow">Net edge, against what it would take</p>
+        <div class="ruler-track">
+          <div class="ruler-line"></div>
+          <div class="ruler-mark observed at-start" style="left: 0.0%;">
+            <span>observed 0</span><i></i>
+          </div>
+          <div class="ruler-mark required" style="left: 55.6%;">
+            <span>required 20</span><i></i>
+          </div>
+        </div>
+        <p class="ruler-scale"><span>0, balanced</span><span>36, all one way</span></p>
+      </div>
+      <p class="what-would-it-take">To separate at this discordance the split would have to reach 28 to 8, a net edge of 20.</p>
+  </section>
+  <section>
+    <details>
+      <summary>Statistics</summary>
+        <dl class="kv">
+          <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+          <dt>Convention</dt><dd>doubled-tail, not mid-p</dd>
+          <dt>p-value</dt><dd>1.000</dd>
+          <dt>Holm-adjusted p</dt><dd>1.000</dd>
+          <dt>Alpha</dt><dd>0.05</dd>
+          <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+          <dt>Ruler threshold</dt><dd>0.002631578947368421, the family&#x27;s first critical value, the same bar as the gap floor</dd>
+          <dt>Discordance rate</dt><dd>0.072, derived from 18 plus 18 over 500</dd>
+          <dt>MDE</dt><dd>17.4 instances at alpha 0.05, power 0.80</dd>
+          <dt>MDE alpha basis</dt><dd>registered uncorrected level, not the family correction</dd>
+        </dl>
+    </details>
+  </section>
+  <section>
+    <p class="eyebrow">Provenance</p>
+      <div class="seal">
+        <span>source <b>SWE-bench/experiments</b></span>
+        <span>revision <b>2f15350cd32becc4569e0d826361048555b605c0</b></span>
+        <span>fetched <b>2026-07-29</b></span>
+        <span>instrument <b>hidden-tests</b></span>
+        <span>applies to secondary figures <b>D4 harness comparability</b></span>
+      </div>
+  </section>
+</article>
+
+<article class="card" aria-labelledby="pair-rank_3_vs_4-0433f890">
+  <hr class="card-rail is-open">
+  <section>
+    <h2 class="eyebrow" id="pair-rank_3_vs_4-0433f890">Pair verdict: Ranks 3 and 4</h2>
+    <p class="verdict-stamp is-open">NOT RESOLVED</p>
+    <p class="reading">These two systems disagree on 65 of 500 instances, and the disagreement runs 36 to 29. That edge of 7 does not resolve the comparison at this correction level; the observed test does not determine which system is better.</p>
+  </section>
+  <section>
+    <p class="eyebrow">Where they disagree</p>
+      <div class="strip" role="img" aria-label="65 disagreements, 36 favour 20250928_trae_doubao_seed_code and 29 favour 20251120_livesweagent_gemini-3-pro-preview">
+        <div class="strip-a" style="flex: 36;"></div>
+        <div class="strip-b" style="flex: 29;"></div>
+      </div>
+      <p class="strip-legend"><span>36 favour 20250928_trae_doubao_seed_code</span><span>29 favour 20251120_livesweagent_gemini-3-pro-preview</span></p>
+      <div class="ruler">
+        <p class="eyebrow">Net edge, against what it would take</p>
+        <div class="ruler-track">
+          <div class="ruler-line"></div>
+          <div class="ruler-mark observed" style="left: 10.8%;">
+            <span>observed 7</span><i></i>
+          </div>
+          <div class="ruler-mark required" style="left: 38.5%;">
+            <span>required 25</span><i></i>
+          </div>
+        </div>
+        <p class="ruler-scale"><span>0, balanced</span><span>65, all one way</span></p>
+      </div>
+      <p class="what-would-it-take">To separate at this discordance the split would have to reach 45 to 20, a net edge of 25.</p>
+  </section>
+  <section>
+    <details>
+      <summary>Statistics</summary>
+        <dl class="kv">
+          <dt>Statistic</dt><dd>exact McNemar, two-sided</dd>
+          <dt>Convention</dt><dd>doubled-tail, not mid-p</dd>
+          <dt>p-value</dt><dd>0.457</dd>
+          <dt>Holm-adjusted p</dt><dd>1.000</dd>
+          <dt>Alpha</dt><dd>0.05</dd>
+          <dt>Decision rule</dt><dd>holm-adjusted p &lt;= alpha</dd>
+          <dt>Ruler threshold</dt><dd>0.002631578947368421, the family&#x27;s first critical value, the same bar as the gap floor</dd>
+          <dt>Discordance rate</dt><dd>0.130, derived from 36 plus 29 over 500</dd>
+          <dt>MDE</dt><dd>23.2 instances at alpha 0.05, power 0.80</dd>
+          <dt>MDE alpha basis</dt><dd>registered uncorrected level, not the family correction</dd>
+        </dl>
+    </details>
+  </section>
+  <section>
+    <p class="eyebrow">Provenance</p>
+      <div class="seal">
+        <span>source <b>SWE-bench/experiments</b></span>
+        <span>revision <b>2f15350cd32becc4569e0d826361048555b605c0</b></span>
+        <span>fetched <b>2026-07-29</b></span>
+        <span>instrument <b>hidden-tests</b></span>
+        <span>applies to secondary figures <b>D4 harness comparability, upstream &#x27;checked&#x27; field for rank 4 is a sentence, not a boolean: &#x27;false (See README.md for info on how to get your results verified)&#x27;</b></span>
+      </div>
+  </section>
+</article>
+</details>
+</main>
+</body>
+</html>

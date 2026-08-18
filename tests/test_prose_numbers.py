@@ -202,3 +202,10 @@ class TestSystemNameMembership:
 
     def test_a_fabricated_system_name_in_prose_fails(self) -> None:
         assert self.violations("the run by 20991231_fake_agent-9000 leads") != []
+
+
+def test_the_cards_html_exclusion_is_documented() -> None:
+    """An undocumented scope hole reads as coverage. Spec section 7 requires the exclusion
+    to be visible in the checker itself, next to what covers cards.html instead."""
+    assert "cards.html" in checker.__doc__
+    assert "validate_card_set" in checker.__doc__

@@ -14,6 +14,13 @@ embedded inside a prose identifier is invisible by the same guard on the
 leading side. Both are accepted, documented limits rather than closed gaps:
 closing either would require distinguishing "the identifier `run42`" from "the
 figure 42x" by more than lookaround, which this checker does not attempt.
+
+Scope excludes experiments/swebench/results/cards.html. Tokenizing HTML would drag in tag
+attributes, CSS, and hex colours for no gain, and the card figures carry stronger coverage
+than membership: total semantic cross-validation of every card leaf against results.json,
+aggregates.json, and the manifest (validate_card_set), validate_card on every card, the
+shared rendered table rows that tie the card table to the README table, committed byte-drift
+checking of the document, and the renderer snapshots.
 """
 
 from __future__ import annotations

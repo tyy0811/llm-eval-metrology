@@ -20,10 +20,22 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from html import escape  # noqa: E402
+
+from metrology.cards import (  # noqa: E402
+    render_card,
+    render_document,
+    render_pair_table,
+    render_plain_language_finding,
+)
 from metrology.reporting import (  # noqa: E402
     CSV_COLUMNS,
+    FINDINGS_COLUMNS,
     csv_pair_rows,
     findings_markdown,
+    findings_pair_rows,
+    illustrative_pair_names,
+    validate_card_set,
 )
 
 START_MARKER = "<!-- findings:start -->"
@@ -33,6 +45,53 @@ DEFAULT_RESULTS = HERE / "results" / "results.json"
 DEFAULT_AGGREGATES = HERE / "derived" / "aggregates.json"
 DEFAULT_README = REPO_ROOT / "README.md"
 DEFAULT_CSV = HERE / "results" / "pairs.csv"
+DEFAULT_CARDS_JSON = HERE / "results" / "cards.json"
+DEFAULT_MANIFEST = HERE / "manifests" / "upstream_digests.json"
+DEFAULT_CARDS_HTML = HERE / "results" / "cards.html"
+
+CARDS_TITLE = "Experiment 1: SWE-bench Verified neighboring-pair finding"
+
+APPARATUS_SUMMARY = "Show statistical details and audit trail"
+
+# Reconciled to the approved fixtures/table_reference.html, which governs (spec 11.4).
+# The longer alternative is not adopted: a caption box is as wide as its table rather than
+# as wide as the scroll container, so at a 320px viewport a longer caption is only partly
+# visible until the reader scrolls sideways.
+TABLE_HEADING = "Every adjacent pair, as tested"
+TABLE_DISCLOSURE = (
+    "The observed discordance and both p-value columns read per-instance artifacts and "
+    "carry the D4 harness comparability caveat: submissions do not record their harness "
+    "version. The pair identity and the resolved-count gap derive from published "
+    "aggregates and do not."
+)
+
+
+def render_cards_document(cards: dict, results: dict, aggregates: dict) -> str:
+    """The finding first, then everything else inside a closed disclosure (spec 11.1).
+
+    A divider was considered and rejected: it leaves the duplicate headline, the p-values,
+    the identifiers and the provenance in the first reading, which is what the contract
+    moves out of it. The apparatus carries no `open` attribute, so a reader who stops at
+    the first screen has a correct and complete headline.
+    """
+    entries = sorted(aggregates["entries"], key=lambda entry: entry["rank"])
+    inner = [render_card(cards["family"])]
+    inner.append(
+        render_pair_table(
+            FINDINGS_COLUMNS,
+            findings_pair_rows(results),
+            heading=TABLE_HEADING,
+            disclosure=TABLE_DISCLOSURE,
+        )
+    )
+    for name in illustrative_pair_names(entries):
+        inner.append(render_card(cards["pairs"][name]))
+    apparatus = (
+        '<details class="technical-apparatus">\n'
+        f"<summary>{escape(APPARATUS_SUMMARY)}</summary>\n" + "\n\n".join(inner) + "\n</details>"
+    )
+    finding = render_plain_language_finding(cards["family"]["family_finding"]["plain_language"])
+    return render_document([finding, apparatus], title=CARDS_TITLE)
 
 
 class ReportFailure(Exception):
@@ -156,22 +215,36 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--aggregates", type=Path, default=DEFAULT_AGGREGATES)
     parser.add_argument("--readme", type=Path, default=DEFAULT_README)
     parser.add_argument("--csv", type=Path, default=DEFAULT_CSV)
+    parser.add_argument("--cards-json", type=Path, default=DEFAULT_CARDS_JSON)
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument("--cards-html", type=Path, default=DEFAULT_CARDS_HTML)
     options = parser.parse_args(argv)
 
     try:
         results = json.loads(options.results.read_text(encoding="utf-8"))
         aggregates = json.loads(options.aggregates.read_text(encoding="utf-8"))
+        cards = json.loads(options.cards_json.read_text(encoding="utf-8"))
+        manifest = json.loads(options.manifest.read_text(encoding="utf-8"))
         validate_sources(results, aggregates)
+        try:
+            validate_card_set(cards, results, aggregates, manifest)
+        except (ValueError, KeyError) as failure:
+            # KeyError as well as ValueError: a missing or renamed key in results.json
+            # surfaces from _dig as a KeyError, and a preflight that let that escape
+            # uncaught would abort mid-run rather than halting with a diagnosis.
+            raise ReportFailure(f"card set validation failed: {failure}") from failure
 
         expected_csv = render_csv_text(results)
         block = findings_markdown(results, aggregates)
         readme_text = options.readme.read_text(encoding="utf-8")
         expected_readme = spliced(readme_text, block)
+        expected_cards_html = render_cards_document(cards, results, aggregates)
 
         if options.write:
             _write_atomically(options.csv, expected_csv)
             _write_atomically(options.readme, expected_readme)
-            print(f"wrote {options.csv} and spliced {options.readme}")
+            _write_atomically(options.cards_html, expected_cards_html)
+            print(f"wrote {options.csv}, {options.cards_html}, and spliced {options.readme}")
             return 0
 
         problems = []
@@ -179,9 +252,14 @@ def main(argv: list[str] | None = None) -> int:
             problems.append(f"{options.csv} does not match the rendered projection")
         if readme_text != expected_readme:
             problems.append(f"{options.readme} findings block does not match the generator")
+        if (
+            not options.cards_html.exists()
+            or options.cards_html.read_text(encoding="utf-8") != expected_cards_html
+        ):
+            problems.append(f"{options.cards_html} does not match the rendered document")
         if problems:
             raise ReportFailure("drift:\n  " + "\n  ".join(problems))
-        print("report check: findings block and CSV match the corpus")
+        print("report check: findings block, CSV, and card set match the corpus")
         return 0
     except ReportFailure as failure:
         print(f"STOPPED: {failure}", file=sys.stderr)

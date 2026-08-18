@@ -13,7 +13,7 @@ help:
 	@echo "  dash-check    authored text contains no em dashes or en dashes"
 	@echo "  import-check  metrology/ imports nothing beyond stdlib, numpy, scipy"
 	@echo "  prose-check   README and notebook prose numerals are committed corpus renderings"
-	@echo "  report-check  README findings block and pairs.csv match the generator"
+	@echo "  report-check  README findings block, pairs.csv, and cards.html match the generator"
 	@echo "  check         test, lint, dash-check, import-check, prose-check, report-check"
 	@echo "  reproduce     regenerate committed result files from committed inputs"
 	@echo ""

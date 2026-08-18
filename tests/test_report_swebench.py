@@ -256,3 +256,218 @@ class TestValidateSourcesArithmetic:
         pair["n_discordant"] = pair["n01"] + pair["n10"]
         with pytest.raises(report.ReportFailure, match="n_items"):
             report.validate_sources(results, AGGREGATES)
+
+
+class TestCardsHtml:
+    """The finding-first document. Spec sections 6, 7 and 11.
+
+    Controls here are adversarial rather than descriptive: each one mutates the document
+    or a source into the shape a reader would be misled by, because a test that only ever
+    sees correct output proves the renderer ran, not that it is guarded.
+    """
+
+    def sandbox_all(self, tmp_path: Path) -> dict[str, Path]:
+        paths = TestModes().sandbox(tmp_path, RESULTS)
+        for name, source in (
+            ("cards_json", "results/cards.json"),
+            ("manifest", "manifests/upstream_digests.json"),
+        ):
+            target = tmp_path / Path(source).name
+            target.write_text(
+                (REPO_ROOT / "experiments/swebench" / source).read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            paths[name] = target
+        paths["cards_html"] = tmp_path / "cards.html"
+        return paths
+
+    def argv(self, mode: str, paths: dict[str, Path]) -> list[str]:
+        return [
+            mode,
+            "--results",
+            str(paths["results"]),
+            "--aggregates",
+            str(paths["aggregates"]),
+            "--readme",
+            str(paths["readme"]),
+            "--csv",
+            str(paths["csv"]),
+            "--cards-json",
+            str(paths["cards_json"]),
+            "--manifest",
+            str(paths["manifest"]),
+            "--cards-html",
+            str(paths["cards_html"]),
+        ]
+
+    def written(self, tmp_path: Path) -> tuple[dict[str, Path], str]:
+        paths = self.sandbox_all(tmp_path)
+        assert report.main(self.argv("--write", paths)) == 0
+        return paths, paths["cards_html"].read_text(encoding="utf-8")
+
+    def body(self, html_text: str) -> str:
+        """Everything after the inlined stylesheet.
+
+        card.css defines .pair-table-block and .technical-apparatus, and the document
+        inlines it, so a class name searched over the whole file matches its own CSS rule
+        in <head> before it matches any markup. The first draft of these controls did
+        exactly that and reported the table ahead of the family card."""
+        assert "</style>" in html_text
+        return html_text[html_text.index("</style>") + len("</style>") :]
+
+    def split(self, html_text: str) -> tuple[str, str]:
+        """The first reading, and the apparatus, both taken from the body."""
+        body = self.body(html_text)
+        marker = '<details class="technical-apparatus"'
+        assert marker in body
+        at = body.index(marker)
+        return body[:at], body[at:]
+
+    def test_write_then_check_round_trips(self, tmp_path: Path) -> None:
+        paths, _ = self.written(tmp_path)
+        assert report.main(self.argv("--check", paths)) == 0
+
+    def test_the_finding_leads_and_the_apparatus_is_closed(self, tmp_path: Path) -> None:
+        """A divider would leave the duplicate headline, the p-values and the provenance
+        in the first reading, which is what contract item 6 moves out of it. Closed means
+        no `open` attribute, and holding means the components are descendants."""
+        _, html_text = self.written(tmp_path)
+        first, apparatus = self.split(html_text)
+        assert 'class="card finding"' in first
+        assert " open" not in apparatus[: apparatus.index(">")]
+        end = apparatus.rindex("</details>")
+        for marker in ("family-summary", "pair-table-block", "Ranks 1 and 2", "Ranks 3 and 4"):
+            assert marker in apparatus[:end], marker
+            assert marker not in first, marker
+
+    def test_the_apparatus_holds_its_parts_in_the_registered_order(self, tmp_path: Path) -> None:
+        """Spec 11.1 fixes the order, and nothing else tests it: the crosswalk validates
+        values and cannot see document position."""
+        _, html_text = self.written(tmp_path)
+        body = self.body(html_text)
+        positions = [
+            body.index(marker)
+            for marker in ("family-summary", "pair-table-block", "Ranks 1 and 2", "Ranks 3 and 4")
+        ]
+        assert positions == sorted(positions)
+
+    def test_the_first_reading_states_no_apparatus(self, tmp_path: Path) -> None:
+        """A reader who stops at the first screen must have a complete headline and no
+        statistics. The system identifiers are read from the corpus rather than spelled
+        out, so a renamed system cannot quietly drop out of the ban."""
+        _, html_text = self.written(tmp_path)
+        first, _ = self.split(html_text)
+        body = first[first.index('class="card finding"') :].lower()
+        for banned in ("holm", "p-value", "p_value", "provenance", "alpha"):
+            assert banned not in body, banned
+        for entry in AGGREGATES["entries"]:
+            assert entry["system"].lower() not in body, entry["system"]
+
+    def test_the_table_matches_the_readme_projection_row_for_row(self, tmp_path: Path) -> None:
+        """One projection, two surfaces. A divergence between the card table and the
+        README table is a defect, so this compares the full header and every row."""
+        from test_cards import parse_table
+
+        from metrology.reporting import FINDINGS_COLUMNS, findings_pair_rows
+
+        _, html_text = self.written(tmp_path)
+        parsed = parse_table(html_text)
+        assert parsed.header == list(FINDINGS_COLUMNS)
+        assert len(parsed.rows) == 19
+        assert parsed.rows == [list(row) for row in findings_pair_rows(RESULTS)]
+
+    def test_no_post_hoc_pair_selection(self, tmp_path: Path) -> None:
+        """Spec 1.2. A layout exploration showed three rows; production carries all
+        nineteen, and pair cards come only from the registered D8 rule."""
+        from metrology.reporting import illustrative_pair_names
+
+        _, html_text = self.written(tmp_path)
+        entries = sorted(AGGREGATES["entries"], key=lambda entry: entry["rank"])
+        assert html_text.count('class="card" aria-labelledby="pair-') == len(
+            illustrative_pair_names(entries)
+        )
+
+    def test_a_hand_edited_document_fails_drift(self, tmp_path: Path) -> None:
+        paths, html_text = self.written(tmp_path)
+        paths["cards_html"].write_text(
+            html_text.replace("Ranks 1 and 2", "Ranks 9 and 9"), encoding="utf-8"
+        )
+        assert report.main(self.argv("--check", paths)) != 0
+
+    def test_a_missing_document_fails_drift(self, tmp_path: Path) -> None:
+        """--check must not pass on an artifact that was never written."""
+        paths, _ = self.written(tmp_path)
+        paths["cards_html"].unlink()
+        assert report.main(self.argv("--check", paths)) != 0
+
+    def test_rendering_is_byte_stable(self, tmp_path: Path) -> None:
+        paths, first = self.written(tmp_path)
+        assert report.main(self.argv("--write", paths)) == 0
+        assert paths["cards_html"].read_text(encoding="utf-8") == first
+
+    def test_equivalent_appears_nowhere(self, tmp_path: Path) -> None:
+        """EQUIVALENT is refused until Phase 5 supplies TOST fields."""
+        _, html_text = self.written(tmp_path)
+        assert "EQUIVALENT" not in html_text
+
+    def test_a_forged_card_stops_the_write(self, tmp_path: Path) -> None:
+        """The preflight runs the crosswalk before any byte is written, so a card that
+        disagrees with its source cannot reach the document."""
+        paths = self.sandbox_all(tmp_path)
+        cards = json.loads(paths["cards_json"].read_text(encoding="utf-8"))
+        cards["family"]["family_finding"]["headline"]["family_size"] = 99
+        paths["cards_json"].write_text(
+            json.dumps(cards, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        assert report.main(self.argv("--write", paths)) != 0
+        assert not paths["cards_html"].exists()
+
+    def test_a_late_validation_failure_leaves_all_three_untouched(self, tmp_path: Path) -> None:
+        """Distinct sentinels in every destination: all validation and all building must
+        precede the first write, so a semantic failure cannot leave one artifact
+        regenerated and another stale."""
+        paths = self.sandbox_all(tmp_path)
+        sentinels = {
+            "readme": f"README SENTINEL\n{report.START_MARKER}\nx\n{report.END_MARKER}\n",
+            "csv": "CSV SENTINEL\n",
+            "cards_html": "HTML SENTINEL\n",
+        }
+        for key, text in sentinels.items():
+            paths[key].write_text(text, encoding="utf-8")
+        cards = json.loads(paths["cards_json"].read_text(encoding="utf-8"))
+        cards["pairs"]["rank_3_vs_4"]["ruler"]["required_net_edge_at_observed"] = 99
+        paths["cards_json"].write_text(
+            json.dumps(cards, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        assert report.main(self.argv("--write", paths)) != 0
+        for key, text in sentinels.items():
+            assert paths[key].read_text(encoding="utf-8") == text, key
+
+    def test_a_missing_source_key_halts_rather_than_aborting(self, tmp_path: Path) -> None:
+        """_dig raises KeyError, not ValueError, on a renamed source key. A preflight
+        that caught only ValueError would abort mid-run instead of halting with a
+        diagnosis, and --write would leave the artifacts at mixed generations."""
+        paths = self.sandbox_all(tmp_path)
+        results = copy(RESULTS)
+        del results["primary"]["largest_observed_gap"]
+        paths["results"].write_text(
+            json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        assert report.main(self.argv("--write", paths)) != 0
+
+    def test_the_table_heading_and_note_match_the_approved_fixture(self) -> None:
+        """The approved reference governs, not the constant. If they differ the constant
+        is wrong, because the fixture carries the D1.3 approval."""
+        import re as _re
+
+        fixture = (REPO_ROOT / "metrology/cards/fixtures/table_reference.html").read_text(
+            encoding="utf-8"
+        )
+
+        def text_of(pattern: str) -> str:
+            raw = _re.search(pattern, fixture, _re.S).group(1)
+            return _re.sub(r"\s+", " ", _re.sub(r"<[^>]+>", "", raw)).strip()
+
+        assert text_of(r"<caption[^>]*>(.*?)</caption>").startswith(report.TABLE_HEADING)
+        note = text_of(r'<p class="pair-table-note"[^>]*>(.*?)</p>')
+        assert note.startswith(report.TABLE_DISCLOSURE)
