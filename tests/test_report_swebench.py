@@ -500,3 +500,135 @@ class TestCardsHtml:
         for technical in ("adjacent pairs separable", "Resolved by the observed test"):
             assert technical not in first, technical
             assert technical in apparatus, technical
+
+    def masthead_of(self, html_text: str) -> str:
+        """The masthead block, collapsed between tags.
+
+        page_reference.html is hand-indented inside main.page and render_document does not
+        indent its fragments, so byte equality would fail on indentation while every
+        element, word and escape matched. This is the same basis the finding layer is
+        compared on.
+        """
+        import re as _re
+
+        at = html_text.index("<h1>")
+        start = html_text.rindex("<div>", 0, at)
+        end = html_text.index("</div>", at) + len("</div>")
+        return _re.sub(r">\s+<", "><", _re.sub(r"\s+", " ", html_text[start:end])).strip()
+
+    def test_the_masthead_matches_the_approved_reference_fragment(self, tmp_path: Path) -> None:
+        """D1.3: the reference carries the copy, and the renderer is held to it.
+
+        This replaces a control that searched the masthead for isolated markup like >20<
+        and so could not see "top 20" inside a sentence, while a comment beside it claimed
+        the masthead carried no figure at all. Equality against the approved fragment
+        cannot miss a word, a figure or an escape, and it fails on any drift in either
+        direction rather than on a list of things someone thought to check.
+        """
+        _, html_text = self.written(tmp_path)
+        reference = (REPO_ROOT / "metrology/cards/fixtures/page_reference.html").read_text(
+            encoding="utf-8"
+        )
+        assert self.masthead_of(html_text) == self.masthead_of(reference)
+
+    def test_the_board_size_is_rendered_from_the_aggregate(self) -> None:
+        """ "Top 20" is a corpus figure, so it goes through render_number at its declared
+        path like every other figure (D3.5).
+
+        The sentinel is what makes this a data-flow control rather than a call-presence
+        one. Its predecessor recorded the call and then asserted the board size appeared
+        in the output, which it does either way: render_number's result and str(20) are
+        the same two characters here, so a renderer that called render_number, discarded
+        the result and formatted the aggregate directly passed. Returning a value that
+        could not arise any other way forces the assertion to follow the data.
+        """
+        sentinel = "SOURCE_COUPLED_BOARD_SIZE"
+        seen: list[tuple[str, object]] = []
+
+        def recording(path, value):
+            seen.append((path, value))
+            return sentinel
+
+        original = report.render_number
+        report.render_number = recording
+        try:
+            fragment = report.render_masthead(AGGREGATES)
+        finally:
+            report.render_number = original
+
+        assert sentinel in fragment
+        assert seen == [("aggregates:family_size", AGGREGATES["family_size"])]
+
+    def test_the_experiment_number_is_not_a_corpus_figure(self) -> None:
+        """The 1 in "Experiment 1" names which experiment this is. It has no source path,
+        and pinning it as a structural identifier keeps a later totality pass from
+        demanding one."""
+        assert report.MASTHEAD_EXPERIMENT == "Experiment 1"
+        assert "{experiment}" in report.MASTHEAD_TITLE_TEMPLATE
+        assert "{board_size}" in report.MASTHEAD_TITLE_TEMPLATE
+
+    def test_the_masthead_does_not_claim_the_apparatus_produced_the_answer(self) -> None:
+        """PREREG D7 and the committed primary.note hold that the headline follows from
+        published totals alone and the per-instance work characterizes it without being
+        able to overturn it. An earlier draft said the disclosure held "everything that
+        produced it", which the corpus denies in as many words."""
+        assert "produced it" not in report.MASTHEAD_NOTE
+        assert "Supporting statistical details" in report.MASTHEAD_NOTE
+        assert report.APPARATUS_SUMMARY in report.MASTHEAD_NOTE
+
+    def test_the_fixture_warning_never_ships(self, tmp_path: Path) -> None:
+        """The reference's stamp says the page is not a published result. cards.html IS
+        the published result, so shipping that sentence would be a false statement about
+        the artifact carrying it."""
+        _, html_text = self.written(tmp_path)
+        # Class names are checked against the body, not the whole file: card.css defines
+        # .stamp-illustrative and content: attr(data-element), and the document inlines
+        # it, so a whole-file search finds the rules rather than any markup. That hazard
+        # has now caught three separate controls in this file; the body() helper is the
+        # standing answer to it.
+        body = self.body(html_text)
+        for markup_only in ("stamp-illustrative", "data-element"):
+            assert markup_only not in body, markup_only
+        # The prose is different: these sentences must appear nowhere at all, including
+        # inside a comment, because each is false of a published artifact.
+        for nowhere in ("Not a published result", "Notes for review"):
+            assert nowhere not in html_text, nowhere
+
+    def test_the_page_holds_three_blocks_in_order(self, tmp_path: Path) -> None:
+        """The page-level hierarchy, asserted as the exact sequence of direct children of
+        main.page rather than as membership.
+
+        This is the guard whose absence let the masthead go missing: every other control
+        checked what was inside the finding card or the apparatus, so removing a whole
+        top-level block changed nothing any of them could see.
+        """
+        from html.parser import HTMLParser
+
+        class TopLevel(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__(convert_charrefs=True)
+                self.depth, self.inside, self.blocks = 0, False, []
+
+            def handle_starttag(self, tag, attrs):
+                classes = dict(attrs).get("class", "")
+                if tag == "main" and "page" in classes:
+                    self.inside = True
+                    return
+                if self.inside:
+                    if self.depth == 0:
+                        self.blocks.append(f"{tag}.{classes}" if classes else tag)
+                    if tag not in {"meta", "hr", "br", "img", "input", "link"}:
+                        self.depth += 1
+
+            def handle_endtag(self, tag):
+                if self.inside and tag != "main":
+                    self.depth = max(0, self.depth - 1)
+
+        _, html_text = self.written(tmp_path)
+        parser = TopLevel()
+        parser.feed(html_text)
+        assert parser.blocks == [
+            "div",
+            "article.card finding",
+            "details.technical-apparatus",
+        ]

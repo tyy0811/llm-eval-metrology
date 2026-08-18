@@ -35,6 +35,7 @@ from metrology.reporting import (  # noqa: E402
     findings_markdown,
     findings_pair_rows,
     illustrative_pair_names,
+    render_number,
     validate_card_set,
 )
 
@@ -65,6 +66,37 @@ TABLE_DISCLOSURE = (
     "aggregates and do not."
 )
 
+# The masthead, held to the approved fragment in fixtures/page_reference.html (D1.3).
+#
+# "Experiment 1" is a structural identifier: its 1 names which experiment this is and has
+# no source path. The board size beside it is a corpus figure and goes through
+# render_number at aggregates:family_size, because "top 20" inside a sentence is exactly
+# the shape a guard looking for isolated markup cannot see, and an earlier comment here
+# claimed this masthead carried no figure at all.
+#
+# The note says where the apparatus is; it does not say the apparatus produced the answer.
+# PREREG D7 and the committed primary.note hold that the headline follows from published
+# totals alone and that the per-instance work characterizes it without being able to
+# overturn it, so "everything that produced it" was a false causal claim.
+MASTHEAD_EXPERIMENT = "Experiment 1"
+MASTHEAD_TITLE_TEMPLATE = (
+    "{experiment}: Neighboring systems in the SWE-bench Verified top {board_size}"
+)
+MASTHEAD_NOTE = (
+    "Can the statistical test chosen in advance tell apart systems ranked next to each "
+    "other on this leaderboard? The answer is summarized below. Supporting statistical "
+    f'details and the audit trail are available under "{APPARATUS_SUMMARY}."'
+)
+
+
+def render_masthead(aggregates: dict) -> str:
+    """The page's opening block: what this is, and where the answer and apparatus sit."""
+    title = MASTHEAD_TITLE_TEMPLATE.format(
+        experiment=MASTHEAD_EXPERIMENT,
+        board_size=render_number("aggregates:family_size", aggregates["family_size"]),
+    )
+    return f'<div>\n<h1>{escape(title)}</h1>\n<p class="note">{escape(MASTHEAD_NOTE)}</p>\n</div>'
+
 
 def render_cards_document(cards: dict, results: dict, aggregates: dict) -> str:
     """The finding first, then everything else inside a closed disclosure (spec 11.1).
@@ -91,7 +123,8 @@ def render_cards_document(cards: dict, results: dict, aggregates: dict) -> str:
         f"<summary>{escape(APPARATUS_SUMMARY)}</summary>\n" + "\n\n".join(inner) + "\n</details>"
     )
     finding = render_plain_language_finding(cards["family"]["family_finding"]["plain_language"])
-    return render_document([finding, apparatus], title=CARDS_TITLE)
+    masthead = render_masthead(aggregates)
+    return render_document([masthead, finding, apparatus], title=CARDS_TITLE)
 
 
 class ReportFailure(Exception):
