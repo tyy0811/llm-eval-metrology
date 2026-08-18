@@ -506,3 +506,112 @@ class TestTaskLevelNotePremise:
         results["primary"]["needs_per_instance_data"] = True
         with pytest.raises(ValueError, match="needs_per_instance_data"):
             validate_card_set(cards, results, aggregates, manifest)
+
+
+class TestPathShadowing:
+    """A card key containing "." or "[n]" collided with a flattened nested path.
+
+    _card_leaves flattens with "." and "[n]", and _apply collapsed its output with
+    dict(), keeping the last entry for a repeated path. The shadowed leaf was then
+    validated in neither direction: absent from the leaf mapping so the unmapped check
+    could not see it, and its path still present so the dead-rule check could not
+    either. Any value could be substituted into the real leaf while the card set
+    validated clean. cards.json is exactly the artifact report.py cannot byte-regenerate,
+    so this crosswalk stands in place of a byte check, and a byte check caught every one
+    of the four shapes below. One shape would have been an enumeration of size one, which
+    is the defect this project has met at every other level, so all four are controls.
+    """
+
+    def test_a_decoy_shadowing_a_headline_figure_fails(self) -> None:
+        cards, results, aggregates, manifest = mutated()
+        finding = cards["family"]["family_finding"]
+        finding["headline"]["family_size"] = 99
+        finding["headline.family_size"] = 19
+        with pytest.raises(ValueError, match="more than one leaf"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+    def test_a_decoy_shadowing_the_analogy_fails(self) -> None:
+        """The inverted sentence is the document's most-read line."""
+        cards, results, aggregates, manifest = mutated()
+        finding = cards["family"]["family_finding"]
+        real = finding["plain_language"]["analogy"]
+        finding["plain_language"]["analogy"] = (
+            "Every neighboring pair cleared the mark, so the ranking is reliable."
+        )
+        # The decoy sits one level above the block, so its flattened path is exactly the
+        # nested leaf's path. Placed inside the block it would flatten to
+        # plain_language.plain_language.analogy, which is merely unmapped, not a collision.
+        finding["plain_language.analogy"] = real
+        with pytest.raises(ValueError, match="more than one leaf"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+    def test_a_decoy_shadowing_an_indexed_list_entry_fails(self) -> None:
+        cards, results, aggregates, manifest = mutated()
+        finding = cards["family"]["family_finding"]
+        real = finding["conditionality"][0]
+        finding["conditionality"][0] = "integrity gate 3 was waived"
+        finding["conditionality[0]"] = real
+        with pytest.raises(ValueError, match="more than one leaf"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+    def test_a_decoy_shadowing_a_pair_card_identity_fails(self) -> None:
+        cards, results, aggregates, manifest = mutated()
+        card = cards["pairs"]["rank_3_vs_4"]
+        comparison = card["comparison"]
+        comparison["system_a"], comparison["system_b"] = (
+            comparison["system_b"],
+            comparison["system_a"],
+        )
+        card["comparison.system_a"] = comparison["system_b"]
+        card["comparison.system_b"] = comparison["system_a"]
+        with pytest.raises(ValueError, match="more than one leaf"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+
+class TestSecondaryFiguresArePathPinned:
+    """primary.headline.tie_forced_not_distinguishable_count is 9 PAIRS and
+    secondary.non_tied_family.gap_floor is 9 TASKS, and the family card reads the second.
+
+    Equal values under different units, so no value comparison can separate them.
+    Repointing the rule at the pairs count left the whole crosswalk suite green, because
+    the unit-collision control fails on the value rather than on the path. This asserts
+    the path itself, derived from the block's own name rather than restated as a literal,
+    so any results:primary.* repoint is rejected.
+    """
+
+    def rules(self) -> dict:
+        from metrology.reporting import (
+            _family_rules,
+            expected_deviations,
+            validate_manifest_population,
+        )
+
+        _cards, results, aggregates, manifest = load()
+        entries = sorted(aggregates["entries"], key=lambda entry: entry["rank"])
+        facts = validate_manifest_population(manifest, aggregates)
+        return _family_rules(results, facts, expected_deviations((), entries))
+
+    @pytest.mark.parametrize("leaf", ["secondary_family_size", "secondary_family_floor"])
+    def test_the_source_path_is_under_the_secondary_family(self, leaf) -> None:
+        rules = self.rules()
+        kind, path = rules[f"family_finding.progressive_disclosure.{leaf}"]
+        assert kind == "source"
+        assert path.startswith("results:secondary.non_tied_family."), path
+
+
+class TestSchemaValidationStillRuns:
+    """_apply runs before validate_card so the crosswalk's path-naming error is the one
+    reported first, but validate_card must still fire. Replacing it with a no-op left the
+    whole crosswalk suite green, so nothing noticed the layer at all.
+
+    This case passes the crosswalk by construction, since the card leaf and its source
+    agree, and is rejected only by the schema layer's cross-field invariant.
+    """
+
+    def test_a_count_the_crosswalk_accepts_is_still_rejected_by_the_invariant(self) -> None:
+        cards, results, aggregates, manifest = mutated()
+        results = copy.deepcopy(results)
+        results["primary"]["resolved_count"] = 5
+        cards["family"]["family_finding"]["observed"]["resolved_count"] = 5
+        with pytest.raises(ValueError, match="resolved <= separable <= family_size"):
+            validate_card_set(cards, results, aggregates, manifest)

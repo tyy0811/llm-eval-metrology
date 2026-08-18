@@ -1540,7 +1540,25 @@ def _dig(document: dict, dotted: str):
 
 
 def _apply(rules: dict, card: dict, context: dict, label: str) -> None:
-    leaves = dict(_card_leaves(card))
+    # Collapsing the leaf list into a dict is what made totality defeatable. _card_leaves
+    # flattens paths with "." and "[n]", so a card key that literally contains either
+    # produces the same path string as a genuinely nested leaf, and dict() keeps the last
+    # one. The shadowed leaf was then validated in neither direction: absent from leaves,
+    # so unmapped never saw it, and its path still present, so dead never saw it either.
+    # A decoy key could substitute any value into the real leaf, including a headline
+    # count of 99 and an analogy asserting the opposite of the finding, and the card set
+    # validated clean. cards.json is the artifact report.py cannot byte-regenerate, so
+    # this crosswalk stands in place of a byte check, and a byte check caught all of them.
+    pairs = list(_card_leaves(card))
+    leaves = dict(pairs)
+    if len(pairs) != len(leaves):
+        seen, collisions = set(), set()
+        for path, _value in pairs:
+            collisions.add(path) if path in seen else seen.add(path)
+        raise ValueError(
+            f"{label}: card path(s) {sorted(collisions)} produced by more than one leaf, "
+            "so a key containing a dot or a bracket index is shadowing a nested leaf"
+        )
     unmapped = sorted(set(leaves) - set(rules))
     if unmapped:
         raise ValueError(f"{label}: no rule for {unmapped}")
