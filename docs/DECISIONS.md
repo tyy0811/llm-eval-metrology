@@ -1342,3 +1342,34 @@ document and a reader reads the render. `aria-describedby` pointing outside a pa
 duplicate components pasted below the disclosure, are likewise named rather than closed.
 Enumerating the CSS-hiding space would be the enumeration trap above, and an enumeration that
 looks total is worse than a named gap.
+
+---
+
+## D3.10 A correction to D3.9: D3.4 does not forbid `resolved_count`
+
+**Date:** 2026-08-18
+**Status:** settled by Jane
+**Corrects:** one sentence in D3.9. Everything else in D3.9 and D3.8 was checked against the code
+and holds.
+
+D3.9 says the headline count must not be taken from `FamilyReport` because `resolved_count` "is
+the substitution D3.4 forbids". That is false, and it inverts D3.4. D3.4 says the opposite in as
+many words: "The distinguishable count's genuine home is `primary.resolved_count`". The near-miss
+D3.4 records is equating distinguishable with **`separable_count`**, a different quantity that is
+also zero on this data. `run.py` builds `primary.headline.distinguishable_count` from
+`family.resolved_count`, so the two are identical by construction rather than merely equal today.
+
+**The real reason the block is built outside `family_card_json` still stands, and is now stated
+correctly.** `FamilyReport` cannot reach the board size or the task count at all. And the headline
+count taken from it would arrive from an **undeclared source**: the crosswalk pins the registered
+path `results:primary.headline.distinguishable_count`, not the number, so a figure read off a
+report property would be correct and unpinned. The architecture was right; the justification
+attached to it was wrong.
+
+**Why this is recorded rather than quietly edited.** `docs/DECISIONS.md` is append-only, and the
+same misattribution had propagated into two docstrings in `metrology/reporting.py` and one
+sentence in the T3.4 spec, all three corrected in the same commit. A wrong rationale on working
+code is this repository's second-most-common defect after the enumerated guard, and it is harder
+to catch, because nothing fails. It was found by a read-only review of the record itself, checking
+each claim in D3.9 against the file and line that settles it. That is the cheapest review in the
+session and it caught the only defect in the entry.

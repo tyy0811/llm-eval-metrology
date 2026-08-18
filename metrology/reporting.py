@@ -606,11 +606,12 @@ _NON_CLAIMS = [
 class PlainLanguageInputs:
     """The registered quantities the finding layer needs, read by run.py.
 
-    Every field is required. FamilyReport carries none of the first three, and its
-    nearest substitute for distinguishable_count is resolved_count, which is numerically
-    equal today and is exactly the substitution D3.4 forbids. A typed record with no
-    defaults makes a missing source a construction error rather than a plausible
-    substitution at render time.
+    Every field is required. FamilyReport carries none of the first three, and taking the
+    headline count off it would source the figure from resolved_count rather than from the
+    registered primary.headline.distinguishable_count path the crosswalk pins. run.py
+    builds the second from the first, so they are identical by construction; the point is
+    the declared source, not the value. A typed record with no defaults makes a missing
+    source a construction error rather than a plausible substitution at render time.
     """
 
     board_size: int
@@ -695,10 +696,12 @@ def family_card_json(report: FamilyReport, *, plain_language: dict) -> dict:
 
     `plain_language` arrives as a completed block built by `plain_language_finding` and is
     embedded verbatim; this function neither builds one nor reads a file. `FamilyReport`
-    carries neither the board size nor the task count the block needs, and its nearest
-    available substitute for the headline count is `resolved_count`, which is numerically
-    equal to `distinguishable_count` today and is exactly the substitution D3.4 forbids. A
-    completed block passed in has nowhere for that substitution to happen.
+    carries neither the board size nor the task count the block needs, and taking the
+    headline count off it would source the figure from `resolved_count` rather than from
+    the registered `primary.headline.distinguishable_count` path the crosswalk pins.
+    `run.py` builds the second from the first, so they are identical by construction; the
+    point is the declared source, not the value. A completed block passed in has nowhere
+    for an undeclared source to creep in.
     """
     inference = (
         f"{report.separable_count} of {report.n_tests} pairs could reject under best-case "
