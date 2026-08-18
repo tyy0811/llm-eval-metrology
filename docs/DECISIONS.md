@@ -1232,3 +1232,113 @@ now include a synthetic nonzero-result baseline so the alternative branches stay
 scratch and generated directories no longer fail the gate for files that cannot reach the
 repository, while a new unignored authored file is still caught and an explicitly supplied path is
 still scanned.
+
+---
+
+## D3.8 The card set ships rendered, and D1.10's table-column sentence is superseded
+
+**Date:** 2026-08-13
+**Status:** settled by Jane
+**Supersedes:** the table-column sentence in D1.10 only. D1.10's card-set decision, being a
+family card, a nineteen-row table, and one or two illustrative pair cards, stands unchanged.
+
+D1.10 specified the nineteen-row table as "gap, best-case floor, and observed discordance". The
+floor column is not built, on D3.6's grounds, which apply here identically: the per-pair floor
+values are in neither corpus file so they fail the D1.8 membership rule, and computing them would
+recompute inside a layer that promises not to. The table therefore carries the same five columns
+as the README table, from the same `findings_pair_rows` projection, so the two surfaces cannot
+disagree about a pair. The gateway floor appears once, on the family card, where D1.9 renders the
+inference beside it.
+
+**What ships.** `experiments/swebench/results/cards.html`, self-contained with inlined CSS,
+holding the family card, the table, and the two D8 pair cards in registered selection order. It is
+written by `report.py --write` and byte-compared by `--check`, like `pairs.csv` and the README
+block.
+
+**`cards.json` is a validated intermediate artifact, not a source.** `report.py` cannot
+byte-regenerate it, because `run.py`'s builders own it and reporting must not recompute. Instead
+`validate_card_set` maps every card leaf to exactly one rule, bidirectionally: an unmapped leaf
+fails and a rule with no leaf fails, comparison is by exact JSON type, and the leaf walk counts
+empty containers so an unknown empty object cannot slip past. The manifest population is validated
+before any provenance is derived from it, because a manifest holding only the systems named on the
+illustrative cards would otherwise satisfy every revision rule while the family card described the
+whole board.
+
+**`fetch_date` has one committed source.** It moved from a literal in `run.py` into the manifest,
+by offline schema migration: a fetch run today cannot establish a historical date, only that the
+pinned bytes remain reachable, so re-fetching would have risked the committed digests for no
+evidence.
+
+**Recorded limits.** `cards.html` stays outside `prose-check`, covered instead by the crosswalk,
+`validate_card`, the shared table rows, byte-drift checking, and the renderer snapshots. JSON
+layout drift inside `cards.json` remains outside `report.py` and will be caught when T3.5
+regenerates the file byte for byte.
+
+---
+
+## D3.9 The card set leads with a plain-language finding, and D1.3 gates the page
+
+**Date:** 2026-08-17
+**Status:** settled by Jane
+**Supersedes:** revision 3's document hierarchy, and the visual sign-off of
+`fixtures/table_reference.html` as the artifact fixing that hierarchy. `table_reference.html`
+stands unchanged as the approved reference for the table component.
+
+The document's primary audience is a general technical reader. The finding layer leads with the
+registered test's result in plain words, shows `0 of 19` immediately, sets the largest neighboring
+lead of 7 tasks against the minimum opening lead of 10 on one scale whose maximum is the mark, and
+carries the qualifying-mark analogy and the two non-claims. Everything else, the family card, the
+nineteen-row table, and the two D8 pair cards, sits inside a collapsed
+`details.technical-apparatus`. A divider was considered and rejected: it leaves the duplicate
+headline, the p-values, the identifiers, and the provenance in the first reading, which is exactly
+what the contract moves out of it.
+
+**The headline names `distinguishable_count`, never `separable_count`.** Both are zero on this
+data, so no value check can tell them apart and only the labels can. The document renders three
+`0 of 19` occurrences across two quantities, all three label-guarded.
+
+**The finding layer is engine-emitted, so the crosswalk covers it.** A presentation-layer
+implementation in `report.py` would have satisfied D3.5 and forfeited totality, leaving the
+most-read sentence in the document as the one part with weaker guarantees than the table beneath
+it. `family_card_json` receives a completed block built from a typed input record that `run.py`
+populates from registered paths, because `FamilyReport` carries neither the board size nor the
+task count, and its nearest substitute for the headline count is `resolved_count`, which is the
+substitution D3.4 forbids.
+
+**Every claim the copy makes is gated before the block is built.** The first draft gated one
+premise of four. The lead asserted that no pair showed a reliable difference while interpolating
+only the board size, the analogy asserted that none reached the mark without comparing the two
+leads, and the scope sentence asserted that N systems make N-1 comparisons without checking it.
+A consequence worth stating: `run.py` now halts if a run ever produces a distinguishable pair,
+rather than emitting a headline saying none did. The approved copy covers only the zero case, and
+PREREG D1 holds the count analytically forced given the registered top 20, so this should never
+fire; if the board changed materially, a loud failure beats a false headline.
+
+**The second D1.3 gate.** `fixtures/page_reference.html` was approved before any renderer for the
+finding layer existed. Its guard set took four rounds of one escalation: figures pinned, then the
+words around them; sentences pinned, then the neighbourhood of the substring; paragraphs pinned,
+then the paragraph nobody named, which reversed the document's headline with the whole suite
+green; then totality. **When a guard is an enumeration, the defect moves to whatever was not
+enumerated**, so totality is the only form that does not depend on the author being right about
+the list. The same shape then appeared in the crosswalk and was fixed the same way.
+
+**`cards.json` is a validated intermediate artifact and has no byte check.** `report.py` cannot
+byte-regenerate it, so `validate_card_set` stands in its place, which is why totality there is
+load-bearing rather than tidy. Two attacks proved it: a decoy key beside a real block, and the
+block removed and its leaves reinserted as literal flattened keys, which duplicates nothing and
+validated clean. Both are closed by reserving `.`, `[` and `]` in card keys at the point leaf
+paths are built, with the duplicate check kept behind it as a second layer and tested directly,
+since the reservation makes it unreachable from the public entry point.
+
+**The limit that justifies the gate.** Editing a fixture span and its declared literal together
+passes every test. Unilateral corruption of either side fails immediately; coordinated corruption
+does not. Unlike the numerals, which derive from the corpus, prose has no independent source of
+truth from which to compute the expectation. Human approval is the source of truth for wording,
+which is what D1.3 supplies. Recorded rather than coded around.
+
+**Named gaps, none present in the shipped bytes.** CSS-driven visual change, `content:` generated
+text, strikethrough, and the transparency family sit outside a document-text guard: CI reads the
+document and a reader reads the render. `aria-describedby` pointing outside a parsed region, and
+duplicate components pasted below the disclosure, are likewise named rather than closed.
+Enumerating the CSS-hiding space would be the enumeration trap above, and an enumeration that
+looks total is worse than a named gap.
