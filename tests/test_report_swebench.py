@@ -305,6 +305,21 @@ class TestCardsHtml:
         assert report.main(self.argv("--write", paths)) == 0
         return paths, paths["cards_html"].read_text(encoding="utf-8")
 
+    def markers(self) -> tuple[str, ...]:
+        """The apparatus components, in the order spec 11.1 fixes.
+
+        The two pair headings are derived from the registered D8 rule and
+        pair_display_label rather than restated, so a change to the selection or to the
+        label form moves this expectation with it instead of silently leaving a golden
+        value behind.
+        """
+        from metrology.reporting import illustrative_pair_names, pair_display_label
+
+        entries = sorted(AGGREGATES["entries"], key=lambda entry: entry["rank"])
+        return ("family-summary", "pair-table-block") + tuple(
+            pair_display_label(name) for name in illustrative_pair_names(entries)
+        )
+
     def body(self, html_text: str) -> str:
         """Everything after the inlined stylesheet.
 
@@ -336,7 +351,7 @@ class TestCardsHtml:
         assert 'class="card finding"' in first
         assert " open" not in apparatus[: apparatus.index(">")]
         end = apparatus.rindex("</details>")
-        for marker in ("family-summary", "pair-table-block", "Ranks 1 and 2", "Ranks 3 and 4"):
+        for marker in self.markers():
             assert marker in apparatus[:end], marker
             assert marker not in first, marker
 
@@ -345,10 +360,7 @@ class TestCardsHtml:
         values and cannot see document position."""
         _, html_text = self.written(tmp_path)
         body = self.body(html_text)
-        positions = [
-            body.index(marker)
-            for marker in ("family-summary", "pair-table-block", "Ranks 1 and 2", "Ranks 3 and 4")
-        ]
+        positions = [body.index(marker) for marker in self.markers()]
         assert positions == sorted(positions)
 
     def test_the_first_reading_states_no_apparatus(self, tmp_path: Path) -> None:
@@ -383,7 +395,7 @@ class TestCardsHtml:
 
         _, html_text = self.written(tmp_path)
         entries = sorted(AGGREGATES["entries"], key=lambda entry: entry["rank"])
-        assert html_text.count('class="card" aria-labelledby="pair-') == len(
+        assert self.body(html_text).count('class="card" aria-labelledby="pair-') == len(
             illustrative_pair_names(entries)
         )
 
@@ -468,6 +480,23 @@ class TestCardsHtml:
             raw = _re.search(pattern, fixture, _re.S).group(1)
             return _re.sub(r"\s+", " ", _re.sub(r"<[^>]+>", "", raw)).strip()
 
-        assert text_of(r"<caption[^>]*>(.*?)</caption>").startswith(report.TABLE_HEADING)
+        assert text_of(r"<caption[^>]*>(.*?)</caption>") == report.TABLE_HEADING
         note = text_of(r'<p class="pair-table-note"[^>]*>(.*?)</p>')
-        assert note.startswith(report.TABLE_DISCLOSURE)
+        assert note == report.TABLE_DISCLOSURE
+
+    def test_the_three_identical_figures_keep_their_distinct_labels(self, tmp_path: Path) -> None:
+        """Two quantities, three rendered occurrences, all seven characters identical.
+
+        The finding layer's is the observed count, the family banner is separable_count,
+        and the family card's observed line is resolved_count. On this data all three are
+        "0 of 19", so no value check can separate them and only their labels can. Each
+        must sit in its own region: collapsing the apparatus is what keeps the reader from
+        meeting the other two, but the labels still have to be distinct underneath.
+        """
+        _, html_text = self.written(tmp_path)
+        first, apparatus = self.split(html_text)
+        assert self.body(html_text).count("0 of 19") == 3
+        assert "neighboring pairs showed a reliable difference" in first
+        for technical in ("adjacent pairs separable", "Resolved by the observed test"):
+            assert technical not in first, technical
+            assert technical in apparatus, technical
