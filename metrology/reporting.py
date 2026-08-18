@@ -1504,13 +1504,38 @@ _INFERENCE_NONE = (
 )
 
 
+#: The characters this module builds leaf paths out of. A card key may not contain them,
+#: because a key that does can impersonate a nested path once flattened.
+_RESERVED_IN_KEY = (".", "[", "]")
+
+
 def _card_leaves(node, prefix=""):
-    """Every leaf, with empty containers counted as leaves in their own right."""
+    """Every leaf, with empty containers counted as leaves in their own right.
+
+    The path syntax is reserved rather than merely disambiguated. Flattening turns
+    nesting into "." and list position into "[n]", so a key containing either can produce
+    a path string identical to a genuinely nested leaf's. Two attacks follow, and only the
+    first is a duplicate: a decoy key alongside the real block, which collides, and the
+    block replaced outright by literal flattened keys, which collides with nothing because
+    the nested leaves no longer exist. The second validated clean against a duplicate
+    check alone, with every value still matching its source, and would have surfaced only
+    when the renderer reached for a block that was no longer there.
+
+    Rejecting the characters at the point paths are built closes both, for every consumer,
+    without either needing to be anticipated. `_apply` keeps its duplicate check as a
+    second layer.
+    """
     if isinstance(node, dict):
         if not node:
             yield prefix, {}
             return
         for key, value in node.items():
+            if any(character in key for character in _RESERVED_IN_KEY):
+                raise ValueError(
+                    f"card key {key!r} at {prefix or 'the card root'!r} contains a "
+                    f"character reserved for leaf paths ({', '.join(_RESERVED_IN_KEY)}), "
+                    "so it could impersonate a nested leaf once flattened"
+                )
             yield from _card_leaves(value, f"{prefix}.{key}" if prefix else key)
     elif isinstance(node, list):
         if not node:
@@ -1540,15 +1565,14 @@ def _dig(document: dict, dotted: str):
 
 
 def _apply(rules: dict, card: dict, context: dict, label: str) -> None:
-    # Collapsing the leaf list into a dict is what made totality defeatable. _card_leaves
-    # flattens paths with "." and "[n]", so a card key that literally contains either
-    # produces the same path string as a genuinely nested leaf, and dict() keeps the last
-    # one. The shadowed leaf was then validated in neither direction: absent from leaves,
-    # so unmapped never saw it, and its path still present, so dead never saw it either.
-    # A decoy key could substitute any value into the real leaf, including a headline
-    # count of 99 and an analogy asserting the opposite of the finding, and the card set
-    # validated clean. cards.json is the artifact report.py cannot byte-regenerate, so
-    # this crosswalk stands in place of a byte check, and a byte check caught all of them.
+    # Second layer, behind _card_leaves' reservation of the path characters. Collapsing
+    # the leaf list into a dict is what made totality defeatable: a decoy key alongside a
+    # real block produced a duplicate path and dict() kept the last one, so the shadowed
+    # leaf was validated in neither direction and any value could be substituted into it,
+    # including a headline count of 99 and an analogy asserting the opposite of the
+    # finding. cards.json is the artifact report.py cannot byte-regenerate, which is why
+    # this crosswalk exists at all; there is no byte check to fall back on, and nothing
+    # but review caught these.
     pairs = list(_card_leaves(card))
     leaves = dict(pairs)
     if len(pairs) != len(leaves):

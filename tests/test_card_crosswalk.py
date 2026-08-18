@@ -520,6 +520,12 @@ class TestPathShadowing:
     so this crosswalk stands in place of a byte check, and a byte check caught every one
     of the four shapes below. One shape would have been an enumeration of size one, which
     is the defect this project has met at every other level, so all four are controls.
+
+    These assert the reservation's message rather than the duplicate check's, because
+    the reservation now fires first. Removing it leaves these decoys still refused by
+    the duplicate layer behind it, so a failure here means the layering moved, not that
+    the artifact became forgeable. TestReplacementShadowing is the control where
+    removing the reservation genuinely lets a forged card through.
     """
 
     def test_a_decoy_shadowing_a_headline_figure_fails(self) -> None:
@@ -527,7 +533,7 @@ class TestPathShadowing:
         finding = cards["family"]["family_finding"]
         finding["headline"]["family_size"] = 99
         finding["headline.family_size"] = 19
-        with pytest.raises(ValueError, match="more than one leaf"):
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
             validate_card_set(cards, results, aggregates, manifest)
 
     def test_a_decoy_shadowing_the_analogy_fails(self) -> None:
@@ -542,7 +548,7 @@ class TestPathShadowing:
         # nested leaf's path. Placed inside the block it would flatten to
         # plain_language.plain_language.analogy, which is merely unmapped, not a collision.
         finding["plain_language.analogy"] = real
-        with pytest.raises(ValueError, match="more than one leaf"):
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
             validate_card_set(cards, results, aggregates, manifest)
 
     def test_a_decoy_shadowing_an_indexed_list_entry_fails(self) -> None:
@@ -551,7 +557,7 @@ class TestPathShadowing:
         real = finding["conditionality"][0]
         finding["conditionality"][0] = "integrity gate 3 was waived"
         finding["conditionality[0]"] = real
-        with pytest.raises(ValueError, match="more than one leaf"):
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
             validate_card_set(cards, results, aggregates, manifest)
 
     def test_a_decoy_shadowing_a_pair_card_identity_fails(self) -> None:
@@ -564,7 +570,7 @@ class TestPathShadowing:
         )
         card["comparison.system_a"] = comparison["system_b"]
         card["comparison.system_b"] = comparison["system_a"]
-        with pytest.raises(ValueError, match="more than one leaf"):
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
             validate_card_set(cards, results, aggregates, manifest)
 
 
@@ -591,12 +597,19 @@ class TestSecondaryFiguresArePathPinned:
         facts = validate_manifest_population(manifest, aggregates)
         return _family_rules(results, facts, expected_deviations((), entries))
 
-    @pytest.mark.parametrize("leaf", ["secondary_family_size", "secondary_family_floor"])
-    def test_the_source_path_is_under_the_secondary_family(self, leaf) -> None:
+    @pytest.mark.parametrize(
+        ("leaf", "path"),
+        [
+            ("secondary_family_size", "results:secondary.non_tied_family.size"),
+            ("secondary_family_floor", "results:secondary.non_tied_family.gap_floor"),
+        ],
+    )
+    def test_the_source_path_is_exact(self, leaf, path) -> None:
+        """The exact path, not merely the prefix: gap_floor and size both live under
+        non_tied_family, so a prefix assertion accepts them being swapped for each other,
+        which is 9 tasks rendered where 10 pairs belong and no value comparison objects."""
         rules = self.rules()
-        kind, path = rules[f"family_finding.progressive_disclosure.{leaf}"]
-        assert kind == "source"
-        assert path.startswith("results:secondary.non_tied_family."), path
+        assert rules[f"family_finding.progressive_disclosure.{leaf}"] == ("source", path)
 
 
 class TestSchemaValidationStillRuns:
@@ -615,3 +628,72 @@ class TestSchemaValidationStillRuns:
         cards["family"]["family_finding"]["observed"]["resolved_count"] = 5
         with pytest.raises(ValueError, match="resolved <= separable <= family_size"):
             validate_card_set(cards, results, aggregates, manifest)
+
+
+class TestReplacementShadowing:
+    """The duplicate check alone missed the stronger attack: replace the block outright.
+
+    Detecting duplicate flattened paths catches a decoy sitting beside a real block. It
+    cannot catch the block being removed and its leaves reinserted as literal flattened
+    keys, because then nothing is duplicated: the nested leaves no longer exist, every
+    remaining value still matches its source, and validate_card_set returned clean. It is
+    the more dangerous of the two, because the structure the renderer reaches for is gone
+    rather than merely wrong, so the failure would surface downstream in report.py as a
+    missing key rather than here as a validation error. validate_card does not catch it
+    either, since _FINDING_SHAPE does not declare the block.
+
+    The fix reserves the path characters at the point paths are built, which closes both
+    shapes without either having to be anticipated.
+    """
+
+    def flattened(self, block: dict, prefix: str) -> dict:
+        from metrology.reporting import _card_leaves
+
+        return dict(_card_leaves(block, prefix))
+
+    def test_replacing_the_whole_block_with_flattened_keys_fails(self) -> None:
+        cards, results, aggregates, manifest = mutated()
+        finding = cards["family"]["family_finding"]
+        finding.update(self.flattened(finding.pop("plain_language"), "plain_language"))
+        assert not isinstance(finding.get("plain_language"), dict)
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+    def test_replacing_a_nested_pair_block_with_flattened_keys_fails(self) -> None:
+        cards, results, aggregates, manifest = mutated()
+        card = cards["pairs"]["rank_3_vs_4"]
+        card.update(self.flattened(card.pop("ruler"), "ruler"))
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+    @pytest.mark.parametrize("character", [".", "[", "]"])
+    def test_each_reserved_character_is_refused_in_a_key(self, character) -> None:
+        cards, results, aggregates, manifest = mutated()
+        cards["family"]["family_finding"][f"invented{character}key"] = 1
+        with pytest.raises(ValueError, match="reserved for leaf paths"):
+            validate_card_set(cards, results, aggregates, manifest)
+
+
+class TestDuplicatePathsAreStillRefused:
+    """The duplicate check behind the reservation, kept and verified as a second layer.
+
+    Once _card_leaves refuses the reserved characters, no card reachable through
+    validate_card_set can produce two identical leaf paths: paths are built only from
+    dict keys and list indices, keys are unique within their object, and a colliding key
+    would have to contain a reserved character to begin with. So _apply's duplicate check
+    is unreachable from the public entry point by construction, which is exactly why it
+    needs a direct test rather than none: an untested second layer is indistinguishable
+    from a deleted one, and the first layer is what the next refactor is most likely to
+    move.
+    """
+
+    def test_apply_refuses_a_collision_that_reaches_it(self, monkeypatch) -> None:
+        from metrology import reporting
+
+        monkeypatch.setattr(
+            reporting,
+            "_card_leaves",
+            lambda node, prefix="": iter([("headline.of", 19), ("headline.of", 99)]),
+        )
+        with pytest.raises(ValueError, match="more than one leaf"):
+            reporting._apply({"headline.of": ("constant", 19)}, {}, {}, "family")
