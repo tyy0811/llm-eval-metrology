@@ -1,6 +1,6 @@
 # Session handoff
 
-Written 2026-08-18 at commit `97fea81`. Session-specific state only: what is done, what is next,
+Written 2026-08-18, updated at commit `30aff44`. Session-specific state only: what is done, what is next,
 and what the next session must not re-derive. The durable record is `PLAN.md`,
 `docs/DECISIONS.md`, and `experiments/swebench/PREREG.md`, which this file does not duplicate.
 
@@ -8,18 +8,23 @@ Delete or rewrite this file when it goes stale. It is a baton, not a document.
 
 ## Opening prompt for the next session
 
-> Read `docs/SESSION_HANDOFF.md`, then write the T3.5 design spec and bring it to me for approval
-> before touching the Makefile. T3.5 makes `make reproduce` real. Do not start T3.6 until
-> reproduction passes in canonical CI.
+> Read `docs/SESSION_HANDOFF.md`, then `docs/specs/2026-08-18-t3.5-reproduce-design.md`
+> (revision 2). Confirm the spec is approved, then write the T3.5 implementation plan. Do not
+> touch the Makefile before the plan is approved, and do not start T3.6 until reproduction passes
+> in canonical CI.
 
 ## Where the work stands
 
 **Phases 0 to 2 complete.** Engine v0.1, closed by D2.8.
 
-**Phase 3: T3.1, T3.2, T3.3 and T3.4 are complete and cleared by Jane.** T3.5 has no spec yet.
+**Phase 3: T3.1, T3.2, T3.3 and T3.4 are complete and cleared by Jane.** T3.5 has a spec at
+revision 2, awaiting confirmation, and no implementation.
 
-115 commits, 859 tests, 40 DECISIONS entries, 8 PREREG deviations. All seven gates green at
-`97fea81`. Clean worktree.
+116 commits, 859 tests, 40 DECISIONS entries, 8 PREREG deviations. Clean worktree.
+
+**Pushed and canonical-CI green through `3e2685f`** (run 32146848927, `ubuntu-24.04`, Python
+3.11.15). Two later commits are **local only and deliberately unpushed**, because they are a spec
+awaiting approval: `b75fe53` (draft) and `30aff44` (revision 2).
 
 The seven gates are `test`, `lint`, `dash-check`, `import-check`, `prose-check`, `report-check`,
 and the CI-only assertion that `make reproduce` still fails. **T3.5 replaces that last one.**
@@ -56,9 +61,41 @@ both D8 pair cards, real data and provenance, and no review annotations, fixture
 
 `cards.html` and `snapshot_*.html` are **generated output, never design sources.**
 
-## Next task: T3.5, and what it must do
+## Next task: T3.5, and exactly where it stands
 
-Write and get the spec approved **before touching the Makefile.** `make reproduce` must:
+**The spec exists at `docs/specs/2026-08-18-t3.5-reproduce-design.md`, revision 2 (`30aff44`).**
+Jane reviewed revision 1, ruled on the two open questions, and required seven corrections, saying
+she would approve the design with those revisions and proceed to the implementation plan.
+Revision 2 applies all seven. **She has not yet confirmed revision 2, so confirm before planning.**
+
+Her two rulings, already in the spec: keep both the Python checker and the raw `git status` step,
+because the first gives artifact-specific diagnostics and the second an independent
+repository-wide backstop; and keep non-canonical local runs non-fatal per D0.9, labelled clearly
+as development checks and never canonical evidence.
+
+The seven corrections, so a reader can check the spec against them rather than trusting it:
+a clean-worktree preflight before the writers; verification over the whole worktree rather than a
+declared artifact list; `$(PYTHON)` throughout; a corrected network model with four
+distinguishable outcomes; `if: ${{ always() }}` on the raw worktree step; six tracked paths, five
+artifacts plus the README; and a tightened environment banner.
+
+**Three things in the spec that were found by reading the code, not by assuming it.** Repeat that
+habit in the plan.
+
+- `fetch.py` already verifies every committed digest through `compare_manifest`, in published
+  order. T3.5 uses it rather than writing a second verifier.
+- A normal `fetch.py` run already rewrites the **tracked** `derived/aggregates.json` alongside the
+  two gitignored derived files, so the reproduce chain is four commands and `aggregates.json` is
+  one of the six verified paths.
+- `fetch_bytes` catches `HTTPError` and returns `None` for **404 only**. Every other status
+  re-raises, and `URLError` and `socket.timeout` are not caught at all, so today a rate limit and
+  an outage both surface as an unhandled traceback that reads like a repository defect.
+
+The highest-value control in the plan: **`reproduce` must never pass `--bootstrap`**, asserted
+against the Makefile text. A bootstrap inside reproduce would rewrite the manifest it is supposed
+to be checked against and turn every mismatch into a silent pass.
+
+`make reproduce` must:
 
 1. Fetch the pinned upstream artifacts and verify their committed digests.
 2. Rebuild the untracked derived table and verify its expected checksum.
