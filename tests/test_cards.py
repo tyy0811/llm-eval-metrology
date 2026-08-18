@@ -969,18 +969,34 @@ REDUCED_ROWS = len(REDUCED_TABLE_ROWS)
 #: of the document. It sits in `<head>`, so no walk bounded by `<body>` reaches it.
 PAGE_TITLE = "Card set page reference"
 
-#: The `h1`. It carries the same words as the title today and is pinned separately, because they are
-#: two regions: the tab strip and the largest type on the page.
-PAGE_HEADING = "Card set page reference"
+#: "Experiment 1" is a structural identifier, not a measured quantity: the 1 names which experiment
+#: this is and has no source path, unlike the board size beside it.
+MASTHEAD_EXPERIMENT = "Experiment 1"
+
+
+#: The `h1`, which is the production masthead verbatim rather than a fixture title, so the renderer
+#: can be held to it exactly. Its board size is derived, because "top 20" is a corpus figure that a
+#: guard looking for isolated markup like `>20<` cannot see inside a sentence, and a comment once
+#: claimed this masthead carried no figure at all.
+def masthead_title() -> str:
+    return (
+        f"{MASTHEAD_EXPERIMENT}: Neighboring systems in the SWE-bench Verified top "
+        f"{corpus_value('aggregates:family_size')}"
+    )
+
 
 #: The stamp's headline, which is the whole of what the page says about its own status in the type
 #: size a skimming reader reads.
 STAMP_HEADLINE = "Layout and copy reference. Not a published result."
 
-#: The two-line note under the `h1`.
+#: The note under the `h1`. It asks what the experiment asked and points at where the answer and
+#: the apparatus are; it does not say the apparatus produced the answer, because PREREG D7 and the
+#: committed `primary.note` say the headline follows from published totals alone and the
+#: per-instance work characterizes it without being able to overturn it.
 INTRO_NOTE = (
-    "The whole document, in the order a reader meets it. Notes for review are at the foot of the "
-    "page."
+    "Can the statistical test chosen in advance tell apart systems ranked next to each other on "
+    "this leaderboard? The answer is summarized below. Supporting statistical details and the "
+    'audit trail are available under "Show statistical details and audit trail."'
 )
 
 #: The heading over the review commentary at the foot of the page.
@@ -1372,7 +1388,8 @@ def stamp_body_literal() -> str:
         "real, and a test holds each of them to the corpus at its declared source path. The table "
         f"is the exception: its {shown} rows stand in for the {shipped} the shipped document "
         "carries, which is a fixture convenience that settles nothing about which pairs ship, and "
-        "its cell figures stay synthetic."
+        "its cell figures stay synthetic. The masthead above is the production masthead verbatim; "
+        "notes for review are at the foot of the page."
     )
 
 
@@ -1956,7 +1973,7 @@ class TestPageReference:
         assert declared_units(reader) == [
             ("strong", STAMP_HEADLINE),
             ("span", stamp_body_literal()),
-            ("h1", PAGE_HEADING),
+            ("h1", masthead_title()),
             ("p", INTRO_NOTE),
             ("h2", REVIEW_NOTES_HEADING),
             ("p", REVIEW_NOTES),
