@@ -9,26 +9,16 @@ the parsing, the coverage rule, and the gates can be driven from fixtures.
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import pytest
+from conftest import load_module
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 FETCH_PATH = REPO_ROOT / "experiments" / "swebench" / "fetch.py"
 
-
-def load_fetch():
-    spec = importlib.util.spec_from_file_location("swebench_fetch", FETCH_PATH)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module  # dataclasses resolve annotations through sys.modules
-    spec.loader.exec_module(module)
-    return module
-
-
-fetch = load_fetch()
+fetch = load_module("swebench_fetch", FETCH_PATH)
 
 INSTANCES = [f"repo__pkg-{index:04d}" for index in range(fetch.EXPECTED_INSTANCES)]
 
@@ -193,7 +183,7 @@ class TestGatesAndRows:
         chosen, artifacts = self.two_systems()
         rows = fetch.build_rows(chosen, artifacts, INSTANCES)
 
-        fetch.run_gates(chosen, artifacts, rows, INSTANCES)
+        fetch.run_gates(chosen, rows, INSTANCES)
 
     def test_gate_3_catches_a_count_that_drifts(self) -> None:
         chosen, artifacts = self.two_systems()
@@ -203,7 +193,7 @@ class TestGatesAndRows:
                 row["label"] = 0
 
         with pytest.raises(fetch.GateFailure, match="gate 3"):
-            fetch.run_gates(chosen, artifacts, rows, INSTANCES)
+            fetch.run_gates(chosen, rows, INSTANCES)
 
     def test_gate_1_catches_a_short_system(self) -> None:
         chosen, artifacts = self.two_systems()
@@ -214,7 +204,7 @@ class TestGatesAndRows:
         ]
 
         with pytest.raises(fetch.GateFailure, match="gate 1"):
-            fetch.run_gates(chosen, artifacts, rows, INSTANCES)
+            fetch.run_gates(chosen, rows, INSTANCES)
 
     def test_gate_4_catches_duplicates(self) -> None:
         """Isolated, because gates 1 to 3 see a duplicate as a count problem first.
@@ -232,7 +222,7 @@ class TestGatesAndRows:
         }
 
         with pytest.raises(fetch.GateFailure, match="gate 4"):
-            fetch.run_gates([], {}, [row, dict(row)], INSTANCES)
+            fetch.run_gates([], [row, dict(row)], INSTANCES)
 
 
 class TestManifestIsAnInput:

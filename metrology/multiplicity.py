@@ -16,6 +16,7 @@ implicitly assembled family is how a correction quietly stops matching what was 
 from __future__ import annotations
 
 import math
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -125,7 +126,7 @@ def _validate(names: Sequence[str], p_values: Sequence[float], alpha: float) -> 
     if not names:
         raise ValueError("family is empty; a multiplicity correction needs at least one test")
 
-    duplicates = sorted({name for name in names if names.count(name) > 1})
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
     if duplicates:
         raise ValueError(f"family has duplicate identifiers: {duplicates[:3]}")
 

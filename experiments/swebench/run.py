@@ -294,9 +294,10 @@ def check_analytic_expectation(family, aggregates: dict) -> None:
     check_no_substitutions(aggregates)
 
     gaps = [abs(member.net_edge) for member in family.members]
-    published = [entry["resolved"] for entry in aggregates["entries"]]
-    published_gaps = [published[i] - published[i + 1] for i in range(len(published) - 1)]
-    if gaps != [abs(gap) for gap in published_gaps]:
+    published_gaps = [
+        abs(a["resolved"] - b["resolved"]) for a, b in adjacent_pairs(aggregates["entries"])
+    ]
+    if gaps != published_gaps:
         raise RunFailure(
             "the derived gap vector does not match the published one; integrity gate 3 should "
             "have caught this in fetch.py"

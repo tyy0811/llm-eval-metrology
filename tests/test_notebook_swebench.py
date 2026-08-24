@@ -8,16 +8,15 @@ figures. That is what lets the D1.8 checker scan notebook prose trivially.
 from __future__ import annotations
 
 import ast
-import importlib.util
 import json
 from pathlib import Path
+
+from conftest import load_module
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 NOTEBOOK = REPO_ROOT / "experiments" / "swebench" / "notebook.py"
 
-_SPEC = importlib.util.spec_from_file_location("swebench_notebook", NOTEBOOK)
-notebook = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(notebook)
+notebook = load_module("swebench_notebook", NOTEBOOK)
 
 RESULTS_PATH = REPO_ROOT / "experiments/swebench/results/results.json"
 AGGREGATES_PATH = REPO_ROOT / "experiments/swebench/derived/aggregates.json"

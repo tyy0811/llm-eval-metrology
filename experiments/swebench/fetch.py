@@ -302,7 +302,7 @@ def build_rows(chosen: list[Entry], artifacts: dict[str, Artifact], instance_ids
     return rows
 
 
-def run_gates(chosen: list[Entry], artifacts, rows, instance_ids: list[str]) -> None:
+def run_gates(chosen: list[Entry], rows, instance_ids: list[str]) -> None:
     """PREREG section 4, gates 1 to 4. Any failure stops the run."""
     canonical = set(instance_ids)
     by_system: dict[str, list] = {}
@@ -490,9 +490,8 @@ def clear_partials() -> None:
     atomically. Staleness is caught downstream instead: T3.2 verifies every input checksum
     against the manifest before reading it.
     """
-    if DERIVED.exists():
-        for path in sorted(DERIVED.glob("*.partial")):
-            path.unlink()
+    for path in DERIVED.glob("*.partial"):
+        path.unlink()
 
 
 def atomic_write(path: Path, text: str) -> str:
@@ -549,7 +548,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    rank {record['rank']} {record['folder']}: {record['reason']}")
 
     rows = build_rows(chosen, artifacts, instance_ids)
-    run_gates(chosen, artifacts, rows, instance_ids)
+    run_gates(chosen, rows, instance_ids)
     print(f"  gates 1 to 4 passed on {len(rows)} rows")
 
     labels_csv = rows_to_csv(rows)

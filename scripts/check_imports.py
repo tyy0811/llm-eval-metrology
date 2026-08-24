@@ -46,9 +46,8 @@ class Violation:
         return f"{shown}:{self.lineno}: imports '{self.module}'"
 
 
-def allowed_roots() -> frozenset[str]:
-    """Top-level module names the engine may import."""
-    return frozenset(sys.stdlib_module_names) | ALLOWED_THIRD_PARTY | {OWN_PACKAGE}
+#: Top-level module names the engine may import.
+ALLOWED_ROOTS = frozenset(sys.stdlib_module_names) | ALLOWED_THIRD_PARTY | {OWN_PACKAGE}
 
 
 def imported_roots(source: str, filename: str = "<string>") -> Iterator[tuple[int, str]]:
@@ -70,11 +69,10 @@ def imported_roots(source: str, filename: str = "<string>") -> Iterator[tuple[in
 
 def violations_in_source(source: str, path: Path) -> list[Violation]:
     """Disallowed imports in a single module's source text."""
-    permitted = allowed_roots()
     return [
         Violation(path=path, lineno=lineno, module=module)
         for lineno, module in imported_roots(source, filename=str(path))
-        if module not in permitted
+        if module not in ALLOWED_ROOTS
     ]
 
 

@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 import pytest
-from conftest import MALFORMED_PAIR_NAMES
+from conftest import MALFORMED_PAIR_NAMES, plain_language_stub
 
 from metrology.paired import minimum_gap_for_threshold
 from metrology.reporting import (
@@ -27,7 +27,6 @@ from metrology.reporting import (
     VERDICT_NOT_RESOLVED,
     VERDICT_RESOLVED,
     PairCounts,
-    PlainLanguageInputs,
     Provenance,
     build_family_report,
     build_pair_report,
@@ -37,7 +36,6 @@ from metrology.reporting import (
     findings_pair_rows,
     iter_numeric_leaves,
     pair_card_json,
-    plain_language_finding,
     render_number,
 )
 
@@ -47,32 +45,6 @@ PROVENANCE = Provenance(
     fetch_date="2026-07-28",
     deviations=("D4 harness comparability",),
 )
-
-
-def plain_language_stub(family_size: int) -> dict:
-    """A self-consistent plain-language block for a family card fixture with this many
-    pairs, for tests below that build a family card to exercise something else (shape,
-    verdict rejection, rendering) and are indifferent to plain_language's own content.
-
-    family_card_json takes a completed block rather than building one (Step 4, D3.4), so
-    every caller must supply one. A single constant block shared across fixtures whose
-    families differ would say "0 of 19" and "top 20" beside a family that actually has 1
-    or 3 pairs: nothing checks that today, but it is internally contradictory data sitting
-    in a fixture, and the cheapest way to make Task 7's consistency rules pass on a fixture
-    like that would be to weaken the rule rather than fix the fixture. board_size is
-    family_size plus one, the same relationship the real registered board has.
-    """
-    return plain_language_finding(
-        PlainLanguageInputs(
-            board_size=family_size + 1,
-            family_size=family_size,
-            n_items=500,
-            distinguishable_count=0,
-            largest_lead=7,
-            opening_lead=10,
-            needs_per_instance_data=False,
-        )
-    )
 
 
 def counts(name: str, n01: int, n10: int, n: int = 500) -> PairCounts:

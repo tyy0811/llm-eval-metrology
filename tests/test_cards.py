@@ -17,7 +17,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-from conftest import MALFORMED_PAIR_NAMES
+from conftest import MALFORMED_PAIR_NAMES, plain_language_stub
 
 from metrology.cards import (
     CARD_STYLESHEET,
@@ -48,31 +48,6 @@ PROVENANCE = Provenance(
 )
 
 REGISTERED_GAPS = [0, 2, 7, 3, 0, 0, 2, 3, 0, 1, 0, 2, 2, 0, 1, 0, 1, 0, 0]
-
-
-def plain_language_stub(family_size: int) -> dict:
-    """A self-consistent plain-language block for a family card fixture with this many
-    pairs. family_card_json takes a completed block rather than building one (T3.4 Step
-    4, D3.4), so every caller must supply one; the renderer tests below are about
-    rendering and shape, not about plain_language's own content, but a single constant
-    block shared across fixtures whose families differ would say "0 of 19" and "top 20"
-    beside a family that actually has 1 pair (TestFamilyCrossFieldInvariants). Nothing
-    checks that today, but it is internally contradictory data sitting in a fixture, and
-    the cheapest way to make Task 7's consistency rules pass on a fixture like that would
-    be to weaken the rule rather than fix the fixture. board_size is family_size plus
-    one, the same relationship the real registered board has.
-    """
-    return plain_language_finding(
-        PlainLanguageInputs(
-            board_size=family_size + 1,
-            family_size=family_size,
-            n_items=500,
-            distinguishable_count=0,
-            largest_lead=7,
-            opening_lead=10,
-            needs_per_instance_data=False,
-        )
-    )
 
 
 def registered_family():

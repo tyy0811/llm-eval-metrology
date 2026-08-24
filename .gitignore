@@ -29,3 +29,8 @@ experiments/*/derived/*
 
 # Claude Code session metadata is runtime state, never a repository artifact.
 .claude/
+
+# graphify's knowledge-graph output is a local tool artifact, regenerated on demand and never
+# a repository artifact. It is also authored text the dash checker would otherwise scan, and
+# T3.5's preflight refuses to start on any non-ignored untracked file.
+graphify-out/

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 
@@ -315,7 +316,7 @@ class FamilyReport:
         if not self.members:
             raise ValueError("a family report needs at least one member")
         names = [member.name for member in self.members]
-        duplicates = sorted({name for name in names if names.count(name) > 1})
+        duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
         if duplicates:
             raise ValueError(f"family has duplicate member names: {duplicates[:3]}")
         if not len(self.members) == len(self.adjusted) == len(self.rejected):

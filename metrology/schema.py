@@ -90,7 +90,7 @@ class PairedLabels:
 
         items = self.item_id.tolist()
         if len(set(items)) != len(items):
-            duplicates = sorted({item for item in items if items.count(item) > 1})
+            duplicates = sorted(item for item, count in Counter(items).items() if count > 1)
             raise SchemaError(f"paired comparison has duplicate items: {duplicates[:3]}")
 
         for name in ("label_a", "label_b"):

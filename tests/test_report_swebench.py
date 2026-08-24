@@ -7,18 +7,15 @@ produces output from a bad source would be blessed by the very next --check.
 
 from __future__ import annotations
 
-import importlib.util
+import copy
 import json
 from pathlib import Path
 
 import pytest
+from conftest import load_module
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-_SPEC = importlib.util.spec_from_file_location(
-    "swebench_report", REPO_ROOT / "experiments" / "swebench" / "report.py"
-)
-report = importlib.util.module_from_spec(_SPEC)
-_SPEC.loader.exec_module(report)
+report = load_module("swebench_report", REPO_ROOT / "experiments" / "swebench" / "report.py")
 
 RESULTS = json.loads(
     (REPO_ROOT / "experiments/swebench/results/results.json").read_text(encoding="utf-8")
@@ -28,23 +25,19 @@ AGGREGATES = json.loads(
 )
 
 
-def copy(document: dict) -> dict:
-    return json.loads(json.dumps(document))
-
-
 class TestValidateSources:
     def test_the_committed_corpus_passes(self) -> None:
         report.validate_sources(RESULTS, AGGREGATES)
 
     def test_a_reordered_pair_list_fails(self) -> None:
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         results["pairs"][2], results["pairs"][6] = results["pairs"][6], results["pairs"][2]
         with pytest.raises(report.ReportFailure, match="order"):
             report.validate_sources(results, AGGREGATES)
 
     def test_a_duplicated_pair_fails(self) -> None:
-        results = copy(RESULTS)
-        results["pairs"][3] = copy(results["pairs"][2])
+        results = copy.deepcopy(RESULTS)
+        results["pairs"][3] = copy.deepcopy(results["pairs"][2])
         with pytest.raises(report.ReportFailure):
             report.validate_sources(results, AGGREGATES)
 
@@ -54,7 +47,7 @@ class TestValidateSources:
         be reported rather than silently repaired by sorting back into rank
         order, which would bless the exact defect this validation exists to
         catch."""
-        aggregates = copy(AGGREGATES)
+        aggregates = copy.deepcopy(AGGREGATES)
         entries = aggregates["entries"]
         entries[0], entries[1] = entries[1], entries[0]
         with pytest.raises(report.ReportFailure, match="rank order"):
@@ -63,13 +56,13 @@ class TestValidateSources:
     def test_a_net_edge_disagreeing_with_aggregates_fails(self) -> None:
         """The gap column claims aggregate provenance; a net_edge that drifts from
         the adjacent resolved counts must halt, not render uncaveated."""
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         results["pairs"][4]["net_edge"] += 1
         with pytest.raises(report.ReportFailure, match="net edge"):
             report.validate_sources(results, AGGREGATES)
 
     def test_a_renamed_pair_fails(self) -> None:
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         results["pairs"][0]["name"] = "rank_1_vs_3"
         with pytest.raises(report.ReportFailure, match="name"):
             report.validate_sources(results, AGGREGATES)
@@ -102,7 +95,7 @@ class TestCsvText:
         differ in name and systems, so swapping the two whole records is caught
         here by the name-adjacency check in validate_sources, not by the
         McNemar or MDE fields the CSV set-membership contrast is about."""
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         results["pairs"][1], results["pairs"][6] = results["pairs"][6], results["pairs"][1]
         with pytest.raises(report.ReportFailure):
             report.validate_sources(results, AGGREGATES)
@@ -208,7 +201,7 @@ class TestModes:
     def test_write_refuses_and_leaves_destinations_untouched_on_a_bad_source(
         self, tmp_path: Path
     ) -> None:
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         results["pairs"][4]["net_edge"] += 1
         paths = self.sandbox(tmp_path, results)
         before_readme = paths["readme"].read_text(encoding="utf-8")
@@ -227,8 +220,8 @@ class TestValidateSourcesArithmetic:
         abs() erased the direction the published ordering asserts. Inverting at the
         final entry leaves every earlier pair untouched, so the failure is the
         inversion itself and not a knock-on mismatch."""
-        results = copy(RESULTS)
-        aggregates = copy(AGGREGATES)
+        results = copy.deepcopy(RESULTS)
+        aggregates = copy.deepcopy(AGGREGATES)
         entries = aggregates["entries"]
         entries[-1]["resolved"] = entries[-2]["resolved"] + 8
         results["pairs"][-1]["net_edge"] = 8
@@ -236,20 +229,20 @@ class TestValidateSourcesArithmetic:
             report.validate_sources(results, aggregates)
 
     def test_net_edge_must_equal_n10_minus_n01(self) -> None:
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         pair = results["pairs"][2]
         pair["n01"], pair["n10"] = pair["n10"], pair["n01"]
         with pytest.raises(report.ReportFailure, match="n10 - n01"):
             report.validate_sources(results, AGGREGATES)
 
     def test_n_discordant_must_equal_n01_plus_n10(self) -> None:
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         results["pairs"][4]["n_discordant"] += 1
         with pytest.raises(report.ReportFailure, match="n01 [+] n10"):
             report.validate_sources(results, AGGREGATES)
 
     def test_n_discordant_must_not_exceed_n_items(self) -> None:
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         pair = results["pairs"][4]
         pair["n01"] = 400
         pair["n10"] = 400 + pair["net_edge"]
@@ -460,7 +453,7 @@ class TestCardsHtml:
         that caught only ValueError would abort mid-run instead of halting with a
         diagnosis, and --write would leave the artifacts at mixed generations."""
         paths = self.sandbox_all(tmp_path)
-        results = copy(RESULTS)
+        results = copy.deepcopy(RESULTS)
         del results["primary"]["largest_observed_gap"]
         paths["results"].write_text(
             json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8"

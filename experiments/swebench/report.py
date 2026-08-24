@@ -106,7 +106,7 @@ def render_cards_document(cards: dict, results: dict, aggregates: dict) -> str:
     moves out of it. The apparatus carries no `open` attribute, so a reader who stops at
     the first screen has a correct and complete headline.
     """
-    entries = sorted(aggregates["entries"], key=lambda entry: entry["rank"])
+    entries = aggregates["entries"]
     inner = [render_card(cards["family"])]
     inner.append(
         render_pair_table(

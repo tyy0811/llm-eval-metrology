@@ -11,29 +11,19 @@ silently changes the headline fails here rather than in a write-up.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from conftest import load_module
 
 from metrology import reporting
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXPERIMENT = REPO_ROOT / "experiments" / "swebench"
 
-
-def load_run():
-    spec = importlib.util.spec_from_file_location("swebench_run", EXPERIMENT / "run.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-run = load_run()
+run = load_module("swebench_run", EXPERIMENT / "run.py")
 
 
 def entry(rank: int, system: str, date: str) -> dict:
