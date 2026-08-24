@@ -18,6 +18,7 @@ import argparse
 import platform
 import subprocess
 import sys
+from pathlib import Path
 
 #: D0.9's canonical interpreter. CI passes --canonical and fails on anything else.
 CANONICAL_PYTHON = "3.11.15"
@@ -91,8 +92,35 @@ def preflight() -> int:
 
 
 def verify() -> int:
-    """Filled in Task 3."""
-    return 0
+    """Fail unless the rebuild reproduced the committed tree exactly.
+
+    The whole worktree, not a declared artifact list. A list cannot see a modified source
+    file, a staged change, or a tracked output nobody thought to declare, which is the
+    enumeration failure this repository has paid for repeatedly: a guard that checks the
+    paths its author listed cannot see the path they did not.
+
+    TRACKED_ARTIFACTS is consulted only to name an artifact that is absent entirely. A
+    deleted file also reaches porcelain as ` D`, but one that was never committed at all
+    gives status nothing to report it against.
+    """
+    missing = [rel for rel in TRACKED_ARTIFACTS if not Path(rel).exists()]
+    dirty = git_output("status", "--porcelain").splitlines()
+    if not missing and not dirty:
+        print("reproduction verified: every tracked artifact rebuilt to the committed bytes")
+        return 0
+
+    print("VERIFY FAILED: the rebuild did not reproduce the committed tree.")
+    for rel in missing:
+        print(f"  missing tracked artifact: {rel}")
+    for line in dirty:
+        print(f"  {line}")
+    # HEAD, not the working tree, so a staged mismatch produces a diff instead of
+    # silence. A byte mismatch reported with no diff shown cannot be acted on.
+    diff = git_output("diff", "HEAD")
+    if diff:
+        print("\n--- git diff HEAD ---")
+        print(diff)
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:

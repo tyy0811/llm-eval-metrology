@@ -176,3 +176,89 @@ class TestPreflight:
     def test_a_clean_tree_starts(self, repo, monkeypatch) -> None:
         monkeypatch.chdir(repo)
         assert check_reproduction.main(["--preflight"]) == 0
+
+
+class TestVerify:
+    """A guard that checks the paths its author listed cannot see the path they did not.
+
+    The six-path list exists only to name an artifact that is absent entirely. Everything
+    else comes from git status over the whole tree, so a source file edited mid-run fails
+    the gate even though no artifact list would name it.
+    """
+
+    @pytest.mark.parametrize("artifact", EXPECTED_ARTIFACTS)
+    def test_dirtying_exactly_one_tracked_path_fails_and_names_it(
+        self, repo, monkeypatch, capsys, artifact
+    ) -> None:
+        monkeypatch.chdir(repo)
+        (repo / artifact).write_text("regenerated differently\n", encoding="utf-8")
+
+        assert check_reproduction.main(["--verify"]) != 0
+        assert artifact in capsys.readouterr().out
+
+    def test_a_modified_source_file_fails(self, repo, monkeypatch, capsys) -> None:
+        """The control a declared-artifact list would have missed entirely. Reproduction
+        is the claim that committed results are a function of committed inputs, so an
+        input that changed under the run invalidates it as surely as an output that did."""
+        monkeypatch.chdir(repo)
+        (repo / "source.py").write_text("x = 2\n", encoding="utf-8")
+
+        assert check_reproduction.main(["--verify"]) != 0
+        assert "source.py" in capsys.readouterr().out
+
+    def test_a_staged_but_uncommitted_change_fails(self, repo, monkeypatch) -> None:
+        monkeypatch.chdir(repo)
+        (repo / "source.py").write_text("x = 2\n", encoding="utf-8")
+        git("add", "source.py", cwd=repo)
+
+        assert check_reproduction.main(["--verify"]) != 0
+
+    def test_a_staged_change_still_produces_a_diff(self, repo, monkeypatch, capsys) -> None:
+        """`git diff` alone shows unstaged changes only, so a staged mismatch would fail
+        with an empty diff: a report naming a file and showing nothing to act on."""
+        monkeypatch.chdir(repo)
+        (repo / "source.py").write_text("x = 2\n", encoding="utf-8")
+        git("add", "source.py", cwd=repo)
+
+        check_reproduction.main(["--verify"])
+        assert "x = 2" in capsys.readouterr().out
+
+    def test_an_untracked_non_ignored_file_fails(self, repo, monkeypatch) -> None:
+        """A tracked output nobody thought to declare arrives as an untracked file first."""
+        monkeypatch.chdir(repo)
+        (repo / "unexpected.json").write_text("{}\n", encoding="utf-8")
+
+        assert check_reproduction.main(["--verify"]) != 0
+
+    def test_a_gitignored_file_does_not_fail(self, repo, monkeypatch) -> None:
+        monkeypatch.chdir(repo)
+        (repo / "experiments/swebench/derived/unevaluated.json").write_text(
+            "[]\n", encoding="utf-8"
+        )
+
+        assert check_reproduction.main(["--verify"]) == 0
+
+    def test_a_missing_tracked_artifact_fails_distinctly(self, repo, monkeypatch, capsys) -> None:
+        """Distinct from a byte mismatch: a writer that produced nothing and one that
+        produced the wrong bytes are different defects with different causes.
+
+        A deleted tracked file also shows in porcelain as ` D`, so on this fixture the two
+        signals overlap. The list earns its place where they do not: an artifact absent
+        from a fresh clone, never committed at all, is invisible to a status that has
+        nothing to report it against.
+        """
+        monkeypatch.chdir(repo)
+        (repo / "experiments/swebench/results/pairs.csv").unlink()
+
+        assert check_reproduction.main(["--verify"]) != 0
+        out = capsys.readouterr().out
+        assert "missing" in out.lower()
+        assert "pairs.csv" in out
+
+    def test_the_exit_code_is_the_gate(self, repo, monkeypatch) -> None:
+        """Asserted directly rather than by parsing output. A gate read by grepping
+        stdout is a gate whose contract is its prose."""
+        monkeypatch.chdir(repo)
+        assert check_reproduction.main(["--verify"]) == 0
+        (repo / "README.md").write_text("drift\n", encoding="utf-8")
+        assert check_reproduction.main(["--verify"]) == 1
