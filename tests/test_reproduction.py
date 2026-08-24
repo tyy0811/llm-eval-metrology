@@ -117,3 +117,62 @@ class TestEnvironmentBanner:
         assert "not canonical evidence" not in out
         assert "canonical interpreter check passed" in out
         assert "runner image is pinned by the workflow" in out
+
+
+class TestPreflight:
+    """A writer that runs on a dirty tree destroys the evidence it should have refused on.
+
+    fetch.py, run.py and report.py --write all overwrite tracked artifacts, so a check
+    that ran after them would report a clean tree it had itself created. Ordering is the
+    whole guard, and it is asserted against the Makefile text in Task 5: calling the
+    checker alone never invokes a writer, so no test here can establish it.
+    """
+
+    def test_a_tracked_modification_refuses_to_start(self, repo, monkeypatch, capsys) -> None:
+        monkeypatch.chdir(repo)
+        (repo / "README.md").write_text("edited\n", encoding="utf-8")
+
+        assert check_reproduction.main(["--preflight"]) != 0
+        assert "README.md" in capsys.readouterr().out
+
+    def test_a_staged_change_refuses_to_start(self, repo, monkeypatch, capsys) -> None:
+        """Staged is still uncommitted. A guard reading only the unstaged half would let
+        `git add` be the way to slip work past it."""
+        monkeypatch.chdir(repo)
+        (repo / "README.md").write_text("edited\n", encoding="utf-8")
+        git("add", "README.md", cwd=repo)
+
+        assert check_reproduction.main(["--preflight"]) != 0
+        assert "README.md" in capsys.readouterr().out
+
+    def test_an_untracked_non_ignored_file_refuses_to_start(
+        self, repo, monkeypatch, capsys
+    ) -> None:
+        monkeypatch.chdir(repo)
+        (repo / "scratch.md").write_text("notes\n", encoding="utf-8")
+
+        assert check_reproduction.main(["--preflight"]) != 0
+        assert "scratch.md" in capsys.readouterr().out
+
+    def test_the_refusal_says_how_to_proceed(self, repo, monkeypatch, capsys) -> None:
+        """A developer with real work in progress is told to stash it, rather than
+        discovering afterwards that a writer overwrote it."""
+        monkeypatch.chdir(repo)
+        (repo / "README.md").write_text("edited\n", encoding="utf-8")
+
+        check_reproduction.main(["--preflight"])
+        assert "stash" in capsys.readouterr().out
+
+    def test_a_gitignored_file_does_not_block_the_start(self, repo, monkeypatch) -> None:
+        """labels.csv and unevaluated.json are rebuilt every run and are gitignored, so
+        a guard that refused on them would refuse on every second run."""
+        monkeypatch.chdir(repo)
+        (repo / "experiments/swebench/derived/labels.csv").write_text(
+            "leftover\n", encoding="utf-8"
+        )
+
+        assert check_reproduction.main(["--preflight"]) == 0
+
+    def test_a_clean_tree_starts(self, repo, monkeypatch) -> None:
+        monkeypatch.chdir(repo)
+        assert check_reproduction.main(["--preflight"]) == 0

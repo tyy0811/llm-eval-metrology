@@ -70,8 +70,24 @@ def print_banner(canonical: bool) -> int:
 
 
 def preflight() -> int:
-    """Filled in Task 2. Returning 0 keeps Task 1's banner tests runnable."""
-    return 0
+    """Refuse to start unless the worktree is clean.
+
+    `git status --porcelain` reports tracked modifications staged and unstaged, plus
+    untracked non-ignored files, and stays silent about ignored ones. That is exactly the
+    boundary wanted here: labels.csv and unevaluated.json are rebuilt every run and must
+    not block a start, while a developer's uncommitted edit must.
+    """
+    dirty = git_output("status", "--porcelain").splitlines()
+    if not dirty:
+        return 0
+    print("PREFLIGHT FAILED: the worktree is not clean, so reproduction must not start.")
+    print("  A writer would overwrite these, and the check afterwards would then see the")
+    print("  clean tree it had itself created, reporting success for a run whose evidence")
+    print("  it had just destroyed.")
+    for line in dirty:
+        print(f"  {line}")
+    print("\nStash or commit this work first: git stash --include-untracked")
+    return 1
 
 
 def verify() -> int:
