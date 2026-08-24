@@ -10,6 +10,8 @@ the parsing, the coverage rule, and the gates can be driven from fixtures.
 from __future__ import annotations
 
 import json
+import socket
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -636,3 +638,152 @@ class TestFetchDate:
             with pytest.raises(TypeError, match="string"):
                 require_canonical_date(wrong_type, "fetch_date")
         assert require_canonical_date("2026-07-29", "fetch_date") == "2026-07-29"
+
+
+class TestNetworkOutcomeClassification:
+    """A rate limit and a repository defect must not read the same.
+
+    Before T3.5 both surfaced as an unhandled traceback: fetch_bytes caught HTTPError,
+    returned None for 404, and re-raised everything else, while a timeout, a refused
+    connection and a DNS failure were never caught at all. So a reader could not tell an
+    outage from a reproduction failure, and the honest response to each is the opposite
+    one: retry, or record the finding.
+
+    Every control here drives a patched transport. No real network.
+    """
+
+    def raising(self, monkeypatch, error: Exception) -> None:
+        def opener(*args, **kwargs):
+            raise error
+
+        monkeypatch.setattr(fetch.urllib.request, "urlopen", opener)
+
+    def test_404_still_returns_none(self, monkeypatch) -> None:
+        """Unchanged behaviour: the coverage rule reads None as an absent artifact, so
+        classifying it as an outage would stop a run the pre-registration expects to walk
+        past."""
+        self.raising(monkeypatch, urllib.error.HTTPError("u", 404, "gone", {}, None))
+        assert fetch.fetch_bytes("https://example.invalid/x") is None
+
+    def test_429_is_infrastructure_not_a_reproduction_failure(self, monkeypatch) -> None:
+        self.raising(monkeypatch, urllib.error.HTTPError("u", 429, "slow down", {}, None))
+        with pytest.raises(fetch.NetworkUnavailable, match="rate limited"):
+            fetch.fetch_bytes("https://example.invalid/x")
+
+    def test_a_5xx_is_unavailable(self, monkeypatch) -> None:
+        self.raising(monkeypatch, urllib.error.HTTPError("u", 503, "down", {}, None))
+        with pytest.raises(fetch.NetworkUnavailable, match="HTTP 503"):
+            fetch.fetch_bytes("https://example.invalid/x")
+
+    def test_a_read_phase_timeout_is_unavailable(self, monkeypatch) -> None:
+        """A timeout while reading the response body arrives bare."""
+        self.raising(monkeypatch, TimeoutError("timed out"))
+        with pytest.raises(fetch.NetworkUnavailable, match="timed out after 60s"):
+            fetch.fetch_bytes("https://example.invalid/x")
+
+    def test_a_request_phase_timeout_reports_the_same_thing(self, monkeypatch) -> None:
+        """urllib wraps a connect-phase timeout as URLError(reason=TimeoutError(...)).
+
+        That is the likelier of the two paths, because a hung upstream stalls before any
+        body exists to read. Falling through to the generic reason-based message would
+        drop the one number a reader needs to know whether to wait or to give up: both
+        paths are the same event and must read the same.
+        """
+        self.raising(monkeypatch, urllib.error.URLError(TimeoutError("timed out")))
+        with pytest.raises(fetch.NetworkUnavailable, match="timed out after 60s"):
+            fetch.fetch_bytes("https://example.invalid/x")
+
+    def test_a_refused_connection_reports_its_own_reason_not_a_timeout(self, monkeypatch) -> None:
+        """ConnectionRefusedError is an OSError, and so is TimeoutError.
+
+        A wrapped-timeout check written as `isinstance(error.reason, OSError)` would
+        therefore tell a reader that a refused connection timed out after 60s, sending
+        them to wait on a host that answered immediately. Matching only "unavailable"
+        cannot see that: both messages contain it.
+        """
+        self.raising(monkeypatch, urllib.error.URLError(ConnectionRefusedError("refused")))
+        with pytest.raises(fetch.NetworkUnavailable) as caught:
+            fetch.fetch_bytes("https://example.invalid/x")
+        assert "refused" in str(caught.value)
+        assert "timed out" not in str(caught.value)
+
+    def test_a_dns_failure_reports_its_own_reason_not_a_timeout(self, monkeypatch) -> None:
+        """socket.gaierror is an OSError too, and a name that does not resolve is not a
+        host that is slow."""
+        self.raising(monkeypatch, urllib.error.URLError(socket.gaierror("no such host")))
+        with pytest.raises(fetch.NetworkUnavailable) as caught:
+            fetch.fetch_bytes("https://example.invalid/x")
+        assert "no such host" in str(caught.value)
+        assert "timed out" not in str(caught.value)
+
+    def test_an_unforeseen_status_is_re_raised_rather_than_absolved(self, monkeypatch) -> None:
+        """Anything outside the classified set stays visible rather than being excused."""
+        self.raising(monkeypatch, urllib.error.HTTPError("u", 418, "teapot", {}, None))
+        with pytest.raises(urllib.error.HTTPError):
+            fetch.fetch_bytes("https://example.invalid/x")
+
+    def test_a_status_above_the_5xx_range_is_not_absolved_as_infrastructure(
+        self, monkeypatch
+    ) -> None:
+        """The upper bound, which a 4xx control cannot reach.
+
+        `error.code >= 500` passes every test above, because they all sit below 500. It
+        takes a 6xx to tell the two forms apart, and a 6xx is not a server error: treating
+        it as infrastructure would silently excuse a status this code never reasoned about.
+        """
+        self.raising(monkeypatch, urllib.error.HTTPError("u", 600, "not a real status", {}, None))
+        with pytest.raises(urllib.error.HTTPError):
+            fetch.fetch_bytes("https://example.invalid/x")
+
+    def test_an_outage_is_not_an_integrity_failure(self) -> None:
+        """The classification boundary itself, which no raises-assertion can see.
+
+        `pytest.raises(NetworkUnavailable)` still passes if NetworkUnavailable subclasses
+        GateFailure, and so does the CLI control, because cli() catches the narrower type
+        first. But every `except GateFailure` elsewhere would then swallow an outage as an
+        integrity failure, which is the exact conflation spec section 5 forbids.
+        """
+        assert not issubclass(fetch.NetworkUnavailable, fetch.GateFailure)
+        assert not issubclass(fetch.GateFailure, fetch.NetworkUnavailable)
+
+    def test_no_infrastructure_outcome_reads_as_a_reproduction_failure(self, monkeypatch) -> None:
+        """The classification is the deliverable. A message that said "does not
+        reproduce" on a 429 would send a reader to debug a repository that is fine."""
+        for error in (
+            urllib.error.HTTPError("u", 429, "slow", {}, None),
+            urllib.error.HTTPError("u", 503, "down", {}, None),
+            TimeoutError("timed out"),
+        ):
+            self.raising(monkeypatch, error)
+            with pytest.raises(fetch.NetworkUnavailable) as caught:
+                fetch.fetch_bytes("https://example.invalid/x")
+            message = str(caught.value)
+            assert "Infrastructure" in message
+            assert "not a reproduction failure" in message
+
+    def test_the_cli_reports_an_outage_without_calling_it_a_repository_defect(
+        self, monkeypatch, capsys
+    ) -> None:
+        """The message is the deliverable, and an unhandled traceback prints none of it.
+
+        Handling this in `__main__` would leave it untestable, because `__main__` never
+        runs under pytest.
+        """
+        self.raising(monkeypatch, urllib.error.HTTPError("u", 429, "slow", {}, None))
+
+        assert fetch.cli([]) == 1
+        err = capsys.readouterr().err
+        assert "UPSTREAM UNREACHABLE" in err
+        assert "STOPPED" not in err
+
+    def test_the_cli_still_reports_an_integrity_failure_as_stopped(
+        self, monkeypatch, capsys
+    ) -> None:
+        """The existing classification must survive the new one being added beside it."""
+
+        def boom(*args, **kwargs):
+            raise fetch.GateFailure("gate 3: counts drifted")
+
+        monkeypatch.setattr(fetch, "main", boom)
+        assert fetch.cli([]) == 1
+        assert "STOPPED" in capsys.readouterr().err

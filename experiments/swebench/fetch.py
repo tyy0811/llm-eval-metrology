@@ -75,9 +75,24 @@ FORMAT_INSTANCE_MAP = "per-instance-map"
 
 LABEL_COLUMNS = ("item_id", "system", "run", "instrument", "label")
 
+#: One message for both timeout paths. urllib delivers a read-phase timeout bare and a
+#: connect-phase timeout wrapped in URLError.reason, and a reader deciding whether to wait
+#: or give up needs the duration either way.
+TIMED_OUT = "upstream unavailable: timed out after 60s. Infrastructure, not a reproduction failure."
+
 
 class GateFailure(RuntimeError):
     """An integrity gate did not hold. The run stops rather than reporting around it."""
+
+
+class NetworkUnavailable(RuntimeError):
+    """Upstream could not be reached. Infrastructure, not a reproduction failure.
+
+    Deliberately not a GateFailure. That name means an integrity gate did not hold, so
+    classifying a rate limit as one would send a reader to debug a repository that is
+    fine. Only a compare_manifest mismatch is a finding about the world; an outage is a
+    reason to retry (T3.5 spec section 5).
+    """
 
 
 @dataclass
@@ -156,13 +171,52 @@ def sha256(payload: bytes) -> str:
 
 
 def fetch_bytes(url: str) -> bytes | None:
+    """Fetch, classifying failure so an outage cannot read as a reproduction defect.
+
+    Four outcomes, per T3.5 spec section 5. Absent (404) returns None and is unchanged,
+    because the coverage rule reads that as an absent artifact and walks past it. Rate
+    limited (429) and unavailable (5xx, timeout, DNS, refused) raise NetworkUnavailable
+    and say they are infrastructure. Moved is not decided here: it is compare_manifest
+    finding a digest that changed under a pinned revision, and it stays a GateFailure.
+
+    HTTPError is caught before URLError because it subclasses it. Reversing the order
+    would swallow every HTTP status into the unavailable branch.
+    """
     try:
         with urllib.request.urlopen(url, timeout=60) as response:
             return response.read()
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return None
+        if error.code == 429:
+            raise NetworkUnavailable(
+                "rate limited by upstream: HTTP 429. Infrastructure, not a reproduction "
+                "failure; retry later."
+            ) from error
+        # Bounded above, not `>= 500`. A 6xx is not a server error, and classifying it as
+        # infrastructure would silently absolve a status this code has never reasoned
+        # about. Anything outside the classified set re-raises and stays visible.
+        if 500 <= error.code < 600:
+            raise NetworkUnavailable(
+                f"upstream unavailable: HTTP {error.code}. Infrastructure, not a "
+                "reproduction failure."
+            ) from error
         raise
+    except TimeoutError as error:
+        # A read-phase timeout arrives bare. socket.timeout is an alias of TimeoutError
+        # on 3.11, so this covers both spellings.
+        raise NetworkUnavailable(TIMED_OUT) from error
+    except urllib.error.URLError as error:
+        # A connect-phase timeout arrives wrapped: urllib puts the TimeoutError in
+        # `reason` rather than letting it propagate. That is the likelier path, because a
+        # hung upstream stalls before there is any body to read, and falling through to
+        # the generic message below would drop the timeout duration in exactly the case a
+        # reader most needs it. Both paths are the same event and report the same thing.
+        if isinstance(error.reason, TimeoutError):
+            raise NetworkUnavailable(TIMED_OUT) from error
+        raise NetworkUnavailable(
+            f"upstream unavailable: {error.reason}. Infrastructure, not a reproduction failure."
+        ) from error
 
 
 # --------------------------------------------------------------------------------------------
@@ -640,9 +694,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":
+def cli(argv: list[str] | None = None) -> int:
+    """Entry point. Classifies the two failure kinds so a reader can tell them apart.
+
+    Separate from `main` so both branches are testable: handling them under
+    `if __name__ == "__main__"` would put them where pytest never runs, and the message
+    is the whole deliverable of the classification.
+    """
     try:
-        raise SystemExit(main())
+        return main(argv)
+    except NetworkUnavailable as unavailable:
+        # Deliberately not "STOPPED": this is not a repository defect, and a reader who
+        # sees the integrity prefix will go and debug a tree that is fine.
+        print(f"\nUPSTREAM UNREACHABLE: {unavailable}", file=sys.stderr)
+        return 1
     except GateFailure as failure:
         print(f"\nSTOPPED: {failure}", file=sys.stderr)
-        raise SystemExit(1) from failure
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())
