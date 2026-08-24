@@ -1,0 +1,100 @@
+"""Reproduction gates for `make reproduce` (PLAN.md T3.5).
+
+Two modes bracketing the writers. `--preflight` refuses to start on a dirty worktree,
+because fetch.py, run.py and report.py --write all overwrite tracked artifacts: without
+it, an uncommitted edit is destroyed by a writer and the final check then reports the
+clean tree it just created, so the run erases the evidence of its own invalidity.
+
+`--verify` reads the whole worktree rather than a declared artifact list. A list cannot
+see a modified source file, a staged change, or a tracked output nobody thought to
+declare, which is the enumeration failure this repository has paid for repeatedly.
+
+Exit status is 0 when the gate holds and 1 when it does not.
+"""
+
+from __future__ import annotations
+
+import argparse
+import platform
+import subprocess
+import sys
+
+#: D0.9's canonical interpreter. CI passes --canonical and fails on anything else.
+CANONICAL_PYTHON = "3.11.15"
+
+#: Every tracked path the pipeline regenerates. Used only to report a *missing* artifact
+#: distinctly; everything else comes from git status over the whole tree.
+TRACKED_ARTIFACTS = (
+    "experiments/swebench/derived/aggregates.json",
+    "experiments/swebench/results/results.json",
+    "experiments/swebench/results/cards.json",
+    "experiments/swebench/results/pairs.csv",
+    "experiments/swebench/results/cards.html",
+    "README.md",
+)
+
+
+def running_python() -> str:
+    """Patched by tests, so the canonical controls run on any interpreter."""
+    return platform.python_version()
+
+
+def git_output(*args: str) -> str:
+    result = subprocess.run(["git", *args], capture_output=True, text=True, check=True)
+    return result.stdout
+
+
+def print_banner(canonical: bool) -> int:
+    """The environment, printed on every run so it cannot rot into something reachable
+    only in cases nobody hits.
+
+    The closing line differs by mode because the two modes make different claims. Default
+    mode is a development check and says so. Canonical mode has just gated the
+    interpreter, and the workflow pins the runner image, so it reports the half it
+    actually established rather than disclaiming a verdict it is part of making.
+    """
+    print(f"  interpreter: {sys.executable}")
+    print(f"  version:     {running_python()}")
+    print(f"  platform:    {platform.platform()}")
+    if not canonical:
+        print("  this run is a development check and is not canonical evidence (D0.9)")
+        return 0
+    if running_python() != CANONICAL_PYTHON:
+        print(f"FAILED: --canonical requires Python {CANONICAL_PYTHON}, got {running_python()}")
+        return 1
+    print(
+        f"  canonical interpreter check passed: Python {CANONICAL_PYTHON}. "
+        "The runner image is pinned by the workflow (D0.9)."
+    )
+    return 0
+
+
+def preflight() -> int:
+    """Filled in Task 2. Returning 0 keeps Task 1's banner tests runnable."""
+    return 0
+
+
+def verify() -> int:
+    """Filled in Task 3."""
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--preflight", action="store_true", help="refuse to start on a dirty tree")
+    mode.add_argument("--verify", action="store_true", help="verify the worktree is clean after")
+    parser.add_argument(
+        "--canonical",
+        action="store_true",
+        help=f"fail unless the interpreter is exactly Python {CANONICAL_PYTHON}",
+    )
+    args = parser.parse_args(argv)
+
+    if print_banner(args.canonical) != 0:
+        return 1
+    return preflight() if args.preflight else verify()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
