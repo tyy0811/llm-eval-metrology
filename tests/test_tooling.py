@@ -87,6 +87,40 @@ def test_ci_pins_an_exact_python_patch_version() -> None:
         assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"'{version}' is not an exact patch version"
 
 
+def test_ci_has_no_reproduce_must_fail_assertion() -> None:
+    """The old gate must not survive beside the new one.
+
+    Two steps disagreeing about whether reproduce should pass makes the job's verdict
+    depend on step order, and the one asserting failure would go red the moment
+    reproduction started working, which is the outcome T3.5 exists to produce.
+    """
+    config = ci_config_without_comments()
+
+    assert "make reproduce succeeded but" not in config
+    assert "failed as required" not in config
+    assert "loud failure" not in config
+
+
+def test_ci_runs_reproduce_canonically() -> None:
+    """--canonical is what makes CI's run a verdict rather than another local check.
+
+    Reaching it through REPRODUCE_MODE means the Makefile carries one recipe, not two.
+    """
+    assert "REPRODUCE_MODE=--canonical" in ci_config_without_comments()
+
+
+def test_ci_prints_a_diff_even_when_reproduce_fails() -> None:
+    """Without always(), GitHub skips the step when make reproduce fails, which is
+    precisely the case whose diff is wanted. The promise to print one would then be
+    unkept in the only situation that needs it."""
+    config = ci_config_without_comments()
+
+    assert "if: ${{ always() }}" in config
+    # HEAD, for the same reason check_reproduction.py uses it: a staged mismatch would
+    # otherwise be reported with an empty diff.
+    assert "git diff HEAD" in config
+
+
 def test_the_results_reproduce_must_regenerate_are_committed() -> None:
     """Reproduction compares a rebuild against committed bytes, so the bytes must exist.
 

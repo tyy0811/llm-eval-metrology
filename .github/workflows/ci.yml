@@ -58,13 +58,29 @@ jobs:
       - name: report-check
         run: make report-check
 
-      # PLAN.md T0.2 requires this target to fail while it does not regenerate anything.
-      # CI asserts the loud failure so the guarantee cannot rot unnoticed. Becomes a real
-      # regeneration check at T3.5.
-      - name: reproduce is a loud failure at this phase
+      # PLAN.md T3.5. This job is the only place a reproduction verdict is established:
+      # the runner image and the interpreter patch version are both pinned above, which is
+      # what "canonical" means under docs/DECISIONS.md D0.9. A local run is a development
+      # check and says so.
+      #
+      # REPRODUCE_MODE=--canonical makes the checker fail on any interpreter but 3.11.15.
+      # It is empty by default so development runs stay useful.
+      - name: reproduce
+        run: make reproduce PYTHON=python REPRODUCE_MODE=--canonical
+
+      # Deliberately redundant with check_reproduction.py --verify. The script can be
+      # wrong; git status in the job cannot be wrong in the same way, and the two failing
+      # together is worth more than either alone. The checker gives artifact-specific
+      # diagnostics, this gives a repository-wide backstop sharing no code with it.
+      #
+      # always() because GitHub would otherwise skip this step exactly when reproduce
+      # fails, which is the only case whose diff anyone wants. HEAD rather than the
+      # working tree, so a staged mismatch is not reported with an empty diff.
+      - name: worktree is clean after reproduction
+        if: ${{ always() }}
         run: |
-          if make reproduce; then
-            echo "make reproduce succeeded but it does not regenerate anything yet"
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            git diff HEAD
             exit 1
           fi
-          echo "make reproduce failed as required"
