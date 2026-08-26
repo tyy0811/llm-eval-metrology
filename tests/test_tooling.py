@@ -1,16 +1,17 @@
 """Phase 0 tooling guarantees: the declared make targets exist, dependencies are pinned
-exactly, and `make reproduce` fails loudly rather than passing as a no-op.
+exactly, and the `reproduce` recipe holds its shape.
 
-A passing `make reproduce` must never be achievable while the target does not actually
-regenerate anything, because a green reproduce is meant to be evidence that committed
-results rebuild from committed inputs. It becomes real in PLAN.md T3.5.
+Until T3.5 this file asserted that `make reproduce` *failed*, because a green reproduce
+must never be achievable while the target regenerates nothing. T3.5 wired it to the real
+pipeline, so that assertion inverted and was retired with the loud-failing recipe it
+guarded. What replaces it is asserted against the Makefile text: the recipe now reaches
+upstream, and a test that shells out to it would fail whenever the network is down, for
+reasons having nothing to do with its subject.
 """
 
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -86,49 +87,92 @@ def test_ci_pins_an_exact_python_patch_version() -> None:
         assert re.fullmatch(r"\d+\.\d+\.\d+", version), f"'{version}' is not an exact patch version"
 
 
-@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
-def test_reproduce_fails_loudly_while_it_is_not_wired_up() -> None:
-    result = subprocess.run(
-        ["make", "reproduce"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
+def test_the_results_reproduce_must_regenerate_are_committed() -> None:
+    """Reproduction compares a rebuild against committed bytes, so the bytes must exist.
 
-    assert result.returncode != 0, "make reproduce must not pass as a silent no-op"
-    assert "not wired up" in result.stdout.lower()
-    assert "t3.5" in result.stdout.lower(), "the message must name where the target becomes real"
-
-
-@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
-@pytest.mark.parametrize(
-    "stale_claim",
-    ("nothing to reproduce", "no experiment has produced results", "no results exist"),
-)
-def test_reproduce_does_not_claim_results_are_absent(stale_claim: str) -> None:
-    """The exit code was always right; the reason stopped being true at T3.2.
-
-    Experiment 1's results are committed, so a message explaining the failure as "no results
-    exist" is false, and the previous test pinned that false string. The target still fails
-    because it does not regenerate anything yet, which is a different claim and the true one.
+    If results ever stop being committed, `make reproduce` would compare a rebuild against
+    nothing and pass, which is the no-op green the retired loud-failure test existed to
+    prevent. This is what still guards that, now that the target is real.
     """
-    result = subprocess.run(
-        ["make", "reproduce"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-    assert stale_claim not in result.stdout.lower(), (
-        f"make reproduce claims {stale_claim!r}, but "
-        f"{RESULTS_DIR.relative_to(REPO_ROOT)} holds committed results"
-    )
-
-
-def test_the_committed_results_that_make_the_stale_message_false_exist() -> None:
-    """Anchors the test above. If results ever stop being committed, this fails first."""
     assert (RESULTS_DIR / "results.json").is_file()
     assert (RESULTS_DIR / "cards.json").is_file()
+
+
+class TestReproduceTarget:
+    """A bootstrap inside reproduce rewrites the manifest it is checked against.
+
+    Every mismatch then becomes a silent pass, so the target would report reproduction
+    while proving only that it can overwrite its own expectations. This is the
+    highest-value control in T3.5.
+
+    Asserted against the Makefile text rather than by running it: the recipe reaches
+    upstream, and a test that needs the network is a test that fails for reasons that
+    have nothing to do with its subject.
+    """
+
+    def recipe(self) -> list[str]:
+        """The reproduce recipe's lines, tab-indented, up to the next target."""
+        text = MAKEFILE.read_text(encoding="utf-8")
+        body = text.split("\nreproduce:", 1)[1]
+        lines = []
+        for line in body.splitlines()[1:]:
+            if line and not line.startswith("\t"):
+                break
+            if line.strip():
+                lines.append(line.strip())
+        return lines
+
+    def writers(self, lines: list[str]) -> list[int]:
+        return [
+            index
+            for index, line in enumerate(lines)
+            if "fetch.py" in line or "run.py" in line or "report.py" in line
+        ]
+
+    def test_the_recipe_is_not_empty(self) -> None:
+        """Every other control here is vacuous against an empty list."""
+        assert len(self.recipe()) >= 5
+
+    def test_reproduce_never_passes_bootstrap(self) -> None:
+        assert not any("--bootstrap" in line for line in self.recipe())
+
+    def test_every_recipe_line_uses_the_python_variable(self) -> None:
+        """A literal python3 would let check-python validate one interpreter while
+        reproduction ran another, and the banner would then name the wrong one."""
+        for line in self.recipe():
+            assert "python3" not in line
+            assert "$(PYTHON)" in line
+
+    def test_preflight_precedes_every_writer(self) -> None:
+        """The control tests/test_reproduction.py cannot supply: calling the checker alone
+        never invokes a writer, so ordering can only be asserted where it is written."""
+        lines = self.recipe()
+        preflight = next(i for i, line in enumerate(lines) if "--preflight" in line)
+        writers = self.writers(lines)
+
+        assert writers
+        assert preflight < min(writers)
+
+    def test_verify_follows_every_writer(self) -> None:
+        lines = self.recipe()
+        verify = next(i for i, line in enumerate(lines) if "--verify" in line)
+        writers = self.writers(lines)
+
+        assert writers
+        assert verify > max(writers)
+
+    def test_both_checker_calls_forward_the_mode_variable(self) -> None:
+        """CI sets REPRODUCE_MODE=--canonical. A checker call that dropped it would run
+        the interpreter gate locally only, and never where the verdict is established."""
+        checks = [line for line in self.recipe() if "check_reproduction.py" in line]
+
+        assert len(checks) == 2
+        for line in checks:
+            assert "$(REPRODUCE_MODE)" in line
+
+    def test_the_mode_variable_defaults_to_empty(self) -> None:
+        """Local runs must not fail on environment, per D0.9."""
+        assert "REPRODUCE_MODE ?=\n" in MAKEFILE.read_text(encoding="utf-8")
 
 
 class TestPythonVersionGuard:

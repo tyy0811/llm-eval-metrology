@@ -1,5 +1,9 @@
 PYTHON ?= python3
 
+# Empty locally: a development run must not fail on environment (D0.9). CI passes
+# REPRODUCE_MODE=--canonical so the interpreter gate holds where the verdict is made.
+REPRODUCE_MODE ?=
+
 .DEFAULT_GOAL := help
 .PHONY: help install check-python test lint fmt dash-check import-check prose-check report-check check reproduce
 
@@ -56,21 +60,19 @@ report-check: check-python
 
 check: test lint dash-check import-check prose-check report-check
 
-# Loud-failing no-op until this target actually regenerates something (PLAN.md T0.2).
-# T3.5 wires it to the Experiment 1 rebuild, and T8.4 chains all three experiments.
+# Experiment 1's rebuild (PLAN.md T3.5). T8.4 chains all three experiments.
 #
-# The explanation below said "no experiment has produced results yet" until T3.2 committed
-# Experiment 1's results and made that false. The exit code was never the problem; the reason
-# was. A target that fails for a stated reason which is no longer true is the same defect as
-# one that passes for no reason.
-reproduce:
-	@echo "make reproduce: not wired up yet."
-	@echo ""
-	@echo "Experiment 1 has committed results in experiments/swebench/results/, but this"
-	@echo "target does not regenerate them yet, so a green exit here would prove nothing."
-	@echo "It stays a deliberate loud failure rather than a passing no-op, because a green"
-	@echo "reproduce is meant to be evidence that committed results rebuild from committed"
-	@echo "inputs, and nothing rebuilds until the target does the fetch and the run."
-	@echo ""
-	@echo "It becomes real in PLAN.md T3.5 (Experiment 1) and T8.4 (all three experiments)."
-	@exit 1
+# The preflight comes first because all three writers overwrite tracked artifacts. Without
+# it, an uncommitted edit is destroyed by a writer and the check afterwards then reports
+# the clean tree that writer just created: the run would erase the evidence of its own
+# invalidity and report success.
+#
+# Never pass --bootstrap here. That rewrites the manifest this run is checked against, so
+# every mismatch would become a silent pass and the target would prove only that it can
+# overwrite its own expectations.
+reproduce: check-python
+	$(PYTHON) scripts/check_reproduction.py --preflight $(REPRODUCE_MODE)
+	$(PYTHON) experiments/swebench/fetch.py
+	$(PYTHON) experiments/swebench/run.py
+	$(PYTHON) experiments/swebench/report.py --write
+	$(PYTHON) scripts/check_reproduction.py --verify $(REPRODUCE_MODE)
