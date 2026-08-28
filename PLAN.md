@@ -100,12 +100,12 @@ Consequences the code must honor: gold-only estimation is "use rows where instru
 
 ## Phase 0: Bootstrap
 
-- [ ] T0.1 Create the repo `llm-eval-metrology`, public, MIT LICENSE, minimal README stating what the repo is and that no results exist yet.
-- [ ] T0.2 Python tooling: project config, pinned dependencies, `make test`, `make lint`, `make dash-check`, `make import-check` (fails if `metrology/` imports anything beyond stdlib, numpy, scipy), `make reproduce` (initially a loud-failing no-op).
-- [ ] T0.3 CI: tests, lint, dash-check, import-check on push.
-- [ ] T0.4 `docs/DECISIONS.md` seeded with the build-order rationale and the schema decision from section 4.
-- [ ] T0.5 Push. The public remote must exist before any pre-registration is written.
-- [ ] T0.6 `docs/instruments.md` v1: the taxonomy (deterministic and execution-based; encoder judges; LLM judges; human annotation; consistency and uncertainty methods; internal-state probes; decomposition methods; detectors as a future family) and, per family, what the certificate can measure: agreement against an anchor, whether self-consistency is meaningful (sampling-based instruments yes, deterministic ones no), whether directional validity applies, access constraints (internal-state probes need white-box access), and typical failure modes. Extended later as instruments are actually used; v1 is one page.
+- [x] T0.1 Create the repo `llm-eval-metrology`, public, MIT LICENSE, minimal README stating what the repo is and that no results exist yet.
+- [x] T0.2 Python tooling: project config, pinned dependencies, `make test`, `make lint`, `make dash-check`, `make import-check` (fails if `metrology/` imports anything beyond stdlib, numpy, scipy), `make reproduce` (initially a loud-failing no-op).
+- [x] T0.3 CI: tests, lint, dash-check, import-check on push.
+- [x] T0.4 `docs/DECISIONS.md` seeded with the build-order rationale and the schema decision from section 4.
+- [x] T0.5 Push. The public remote must exist before any pre-registration is written.
+- [x] T0.6 `docs/instruments.md` v1: the taxonomy (deterministic and execution-based; encoder judges; LLM judges; human annotation; consistency and uncertainty methods; internal-state probes; decomposition methods; detectors as a future family) and, per family, what the certificate can measure: agreement against an anchor, whether self-consistency is meaningful (sampling-based instruments yes, deterministic ones no), whether directional validity applies, access constraints (internal-state probes need white-box access), and typical failure modes. Extended later as instruments are actually used; v1 is one page.
 
 **Gate:** CI green on the empty repo.
 
@@ -113,8 +113,8 @@ Consequences the code must honor: gold-only estimation is "use rows where instru
 
 ## Phase 1: Experiment 1 recon and pre-registration
 
-- [ ] T1.1 Recon to `docs/recon_swebench.md`: where the public per-instance artifacts live, which entries have complete artifacts, the exact instance set and count for the Verified split, file format, license and attribution, and how leaderboard ordering is sourced, including tie representation.
-- [ ] T1.2 Write `experiments/swebench/PREREG.md`:
+- [x] T1.1 Recon to `docs/recon_swebench.md`: where the public per-instance artifacts live, which entries have complete artifacts, the exact instance set and count for the Verified split, file format, license and attribution, and how leaderboard ordering is sourced, including tie representation.
+- [x] T1.2 Write `experiments/swebench/PREREG.md`:
   - **Question.** Among the top N entries by published resolve rate, how many adjacent pairs are statistically distinguishable.
   - **N and adjacency.** Fix N from recon facts. Adjacency by published ordering. Declare tie handling.
   - **Data.** Public per-instance pass/fail artifacts, shared instance set, mapped to the section 4 schema with instrument `hidden-tests` as anchor and sole instrument.
@@ -123,7 +123,7 @@ Consequences the code must honor: gold-only estimation is "use rows where instru
   - **Reporting rule.** The count is reported whatever it is, including zero and including all.
   - **Board precision.** The analyzed artifact is the official leaderboard with public per-instance results; vendor self-reported aggregates are out of scope.
   - **Deviation policy.** Departures are appended with reason and timestamp, never edited silently.
-- [ ] T1.3 Commit and push before any data is fetched.
+- [x] T1.3 Commit and push before any data is fetched.
 
 **Verification:** the PREREG commit is on the public remote and predates the first data artifact in `git log`.
 
@@ -133,13 +133,13 @@ Consequences the code must honor: gold-only estimation is "use rows where instru
 
 Only what Experiment 1 needs, plus the presentation primitive, which Experiment 1 also needs.
 
-- [ ] T2.1 `schema.py` per section 4: long-format loader, validation, wide-to-long helper.
-- [ ] T2.2 `paired.py`: exact McNemar on discordant pairs; paired bootstrap intervals for rate differences; clustered variant for repeated runs per item.
-- [ ] T2.3 `power.py`: MDE for paired binary comparisons at given n, power, alpha.
-- [ ] T2.4 `multiplicity.py`: Holm, with the test family passed explicitly.
-- [ ] T2.5 `reporting.py` v1: results files to markdown blocks and card JSON. No number reaches prose except through this module.
-- [ ] T2.6 `cards/` v1: the verdict card renderer, static HTML from card JSON only. Commit the existing mockup as `cards/fixtures/verdict_reference.html`; the renderer targets its structure (verdict stamp, plain-language reading, resolution ruler, discordance strip, what-would-it-take line, progressive disclosure, provenance seal). Snapshot tests: fixed card JSON in, byte-stable HTML out. Fixture files are the one sanctioned home for illustrative numbers and are labeled as such.
-- [ ] T2.7 Tests: hand-computed McNemar fixtures including zero-discordance and all-one-sided edges; bootstrap reproducibility under fixed seed; Holm against a worked example; loader long-format failure cases (duplicate keys, missing anchor, broken pairing); card snapshots.
+- [x] T2.1 `schema.py` per section 4: long-format loader, validation, wide-to-long helper.
+- [x] T2.2 `paired.py`: exact McNemar on discordant pairs; paired bootstrap intervals for rate differences; clustered variant for repeated runs per item.
+- [x] T2.3 `power.py`: MDE for paired binary comparisons at given n, power, alpha.
+- [x] T2.4 `multiplicity.py`: Holm, with the test family passed explicitly.
+- [x] T2.5 `reporting.py` v1: results files to markdown blocks and card JSON. No number reaches prose except through this module.
+- [x] T2.6 `cards/` v1: the verdict card renderer, static HTML from card JSON only. Commit the existing mockup as `cards/fixtures/verdict_reference.html`; the renderer targets its structure (verdict stamp, plain-language reading, resolution ruler, discordance strip, what-would-it-take line, progressive disclosure, provenance seal). Snapshot tests: fixed card JSON in, byte-stable HTML out. Fixture files are the one sanctioned home for illustrative numbers and are labeled as such.
+- [x] T2.7 Tests: hand-computed McNemar fixtures including zero-discordance and all-one-sided edges; bootstrap reproducibility under fixed seed; Holm against a worked example; loader long-format failure cases (duplicate keys, missing anchor, broken pairing); card snapshots.
 
 **Verification:** `make test` and `make import-check` green.
 
@@ -147,10 +147,10 @@ Only what Experiment 1 needs, plus the presentation primitive, which Experiment 
 
 ## Phase 3: Experiment 1 run and outputs
 
-- [ ] T3.1 `fetch.py`: download per-instance artifacts for the pre-registered entries, normalize to the schema, commit the derived table plus checksums, record substitutions.
-- [ ] T3.2 `run.py`: execute exactly the pre-registered analysis. Exploratory extras go in a separately labeled appendix and never mix into the headline.
-- [ ] T3.3 Outputs: `results/` CSV, a notebook that reads results rather than recomputing, and a README findings block written by `reporting.py`.
-- [ ] T3.4 Render the verdict card per adjacent pair through `cards/`, plus one family summary card.
+- [x] T3.1 `fetch.py`: download per-instance artifacts for the pre-registered entries, normalize to the schema, commit the derived table plus checksums, record substitutions.
+- [x] T3.2 `run.py`: execute exactly the pre-registered analysis. Exploratory extras go in a separately labeled appendix and never mix into the headline.
+- [x] T3.3 Outputs: `results/` CSV, a notebook that reads results rather than recomputing, and a README findings block written by `reporting.py`.
+- [x] T3.4 Render the verdict card per adjacent pair through `cards/`, plus one family summary card.
 - [ ] T3.5 `make reproduce` regenerates byte-identical results from the committed derived table.
 - [ ] T3.6 Cross-repo handoff: the agent-bench dashboard finding card is written against these results and links here. Nothing on that card exists before this phase completes.
 

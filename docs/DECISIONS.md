@@ -1373,3 +1373,94 @@ code is this repository's second-most-common defect after the enumerated guard, 
 to catch, because nothing fails. It was found by a read-only review of the record itself, checking
 each claim in D3.9 against the file and line that settles it. That is the cheapest review in the
 session and it caught the only defect in the entry.
+
+---
+
+## D3.11 Reproduction is real, and the worktree is the check
+
+**Date:** 2026-08-26
+**Status:** settled by Jane
+**Changes:** D3.8's stated limitation that `cards.json` has no byte check. That limitation was
+true when written and is not true after this entry. Everything else in D3.8 stands.
+
+`make reproduce` was a loud-failing no-op from T0.2. It now rebuilds every committed Experiment 1
+artifact from committed inputs and fails if any byte differs:
+
+    reproduce: check-python
+        check_reproduction.py --preflight $(REPRODUCE_MODE)
+        fetch.py
+        run.py
+        report.py --write
+        check_reproduction.py --verify $(REPRODUCE_MODE)
+
+Reproduction is the claim that **the committed results are a function of the committed inputs and
+the pinned environment, and of nothing else.** It is not a test that the statistics are correct;
+the suite does that. It is the check that no ambient state, no local edit, and no undeclared input
+contributed to a published number.
+
+**The preflight runs before any writer, and that ordering is the whole guard.** All three writers
+overwrite tracked artifacts. Run the check only afterwards and an uncommitted edit to
+`results.json` is destroyed by `run.py`, whereupon the check reports the clean tree that writer
+just created: the run erases the evidence of its own invalidity and reports success. So the
+preflight refuses to start on any tracked modification, staged or unstaged, and any non-ignored
+untracked file, and it names what it found and says to stash it.
+
+That ordering cannot be asserted from the checker's own tests, because calling the checker never
+invokes a writer. It is asserted against the Makefile recipe text, where the ordering is actually
+written.
+
+**`--verify` reads the whole worktree, not a declared artifact list.** A six-artifact list cannot
+see a modified source file or a tracked output nobody thought to declare. That is the
+enumeration failure D3.9 records at document scale, arriving here at repository scale: a guard that
+checks the paths its author listed cannot see the path they did not. `git status --porcelain` over
+the whole tree is the gate; the six-path inventory is consulted only to name an artifact that is
+absent entirely, which is the fresh-clone case status has nothing to report against.
+
+Diffing is by git rather than a checksum list maintained here, because the object store already
+holds that fact authoritatively and a second copy would be a second source of truth. The diff is
+`git diff HEAD`, not `git diff`: the latter shows unstaged changes only, so a staged mismatch would
+be reported as a filename with nothing beneath it to act on.
+
+**`cards.json` now has a byte check, and both guards stay.** D3.8 recorded that `report.py` cannot
+byte-regenerate it, so `validate_card_set`'s totality stood in place of one. After T3.5, `run.py`
+regenerates it under `make reproduce` and the byte check exists. Neither guard subsumes the other:
+the crosswalk catches a card that disagrees with its sources on any machine and in any working
+tree, and the byte check catches only what a full canonical rebuild produces. They fail on
+different things.
+
+**Upstream is not vendored, and that is a deliberate cost.** Vendoring the artifacts would make the
+reproduction claim circular: it would prove the pipeline is deterministic while proving nothing
+about whether the committed results came from the upstream data they claim to. The price is that
+reproduction depends on a live network, which the classification below makes legible rather than
+confusing.
+
+**Four network outcomes, three of them infrastructure.** Before this change, `fetch_bytes` returned
+`None` for HTTP 404 and let rate limits, timeouts, refused connections, DNS failures, and other HTTP
+failures escape. Rate limits and outages therefore appeared as unhandled tracebacks,
+indistinguishable to a reader from an unexpected code defect. They now raise `NetworkUnavailable`;
+a manifest mismatch remains a `GateFailure` and a finding to record.
+
+| Outcome | Cause | Meaning |
+|---|---|---|
+| Absent | HTTP 404 | The pinned object is gone. Returns `None`, unchanged. |
+| Rate limited | HTTP 429 | Infrastructure. Retry later. |
+| Unavailable | timeout, refused connection, DNS failure, HTTP 5xx | Infrastructure. |
+| Moved | `compare_manifest` mismatch | **A finding.** Upstream changed under a pinned revision. |
+
+Only Moved is a finding, and **the manifest must not be re-bootstrapped to make it go away.**
+`NetworkUnavailable` is deliberately not a `GateFailure`: that name means an integrity gate did not
+hold, so classifying a rate limit as one would send a reader to debug a tree that is fine.
+
+**The environment banner prints on every run and differs by mode.** A local run states that it is a
+development check and not canonical evidence, and does not fail on a non-canonical interpreter,
+because local runs are meant to be useful (D0.9). CI passes `--canonical`, which fails unless the
+interpreter is exactly 3.11.15. The checker does not attempt to establish the runner image:
+`platform.system() == "Linux"` does not distinguish `ubuntu-24.04` from anything else Linux. The
+checker verifies the interpreter, the workflow pins the image, and a test pins the workflow.
+
+**What this entry does not establish.** A local `make reproduce` is a development check. **Only CI
+on `ubuntu-24.04` with Python 3.11.15 can establish that the canonical environment produces these
+exact bytes**, and at the time of writing it has not yet run against this work. If it fails on
+bytes that reproduce locally, that is a real finding about environment dependence and not a reason
+to relax the gate. T3.5 is not complete, and `PLAN.md` leaves it unchecked, until that run is green
+and its id is recorded.
