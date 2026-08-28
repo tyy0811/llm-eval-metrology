@@ -12,6 +12,7 @@ reasons having nothing to do with its subject.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,62 @@ def test_dependencies_are_pinned_exactly() -> None:
     assert lines, "requirements.txt declares no dependencies"
     for line in lines:
         assert "==" in line, f"determinism requires an exact pin, found '{line}'"
+
+
+def declared_requirements() -> set[str]:
+    """Package names declared in requirements.txt, normalized for import comparison."""
+    names = set()
+    for line in REQUIREMENTS.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name = re.split(r"[=<>!~\[]", line, maxsplit=1)[0].strip()
+        if name:
+            names.add(name.lower().replace("-", "_"))
+    return names
+
+
+def test_every_third_party_import_outside_the_engine_is_declared() -> None:
+    """An import nothing declares makes reproduction depend on the authoring machine.
+
+    `pyarrow` was imported by fetch.py from T3.1 and declared nowhere, so `make reproduce`
+    could not have run on a fresh clone. It stayed hidden because CI asserted the target
+    *failed* until T3.5: the one execution that would have exposed it was the one the old
+    gate guaranteed would never happen. The first canonical run found it immediately.
+
+    `metrology/` has its own boundary (`make import-check`, stdlib plus numpy and scipy).
+    This covers everything outside it, where heavier dependencies are permitted but must
+    still be declared. The set is derived from the AST rather than listed, because a
+    listed set cannot see the import its author did not think to add.
+    """
+    import check_imports
+
+    roots: dict[str, set[str]] = {}
+    for base in (REPO_ROOT / "experiments", REPO_ROOT / "scripts"):
+        for path in sorted(base.rglob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            for lineno, module in check_imports.imported_roots(source, filename=str(path)):
+                roots.setdefault(module, set()).add(f"{path.relative_to(REPO_ROOT)}:{lineno}")
+
+    local = {
+        p.stem for base in ("experiments", "scripts") for p in (REPO_ROOT / base).rglob("*.py")
+    }
+    third_party = {
+        module: sites
+        for module, sites in roots.items()
+        if module not in sys.stdlib_module_names
+        and module != check_imports.OWN_PACKAGE
+        and module not in local
+    }
+
+    declared = declared_requirements()
+    undeclared = {m: sites for m, sites in third_party.items() if m not in declared}
+
+    assert not undeclared, (
+        "undeclared third-party import(s) outside metrology/: "
+        + "; ".join(f"{m} at {sorted(sites)}" for m, sites in sorted(undeclared.items()))
+        + ". Add an exact pin to requirements.txt (D0.5)."
+    )
 
 
 def test_engine_runtime_dependencies_are_available() -> None:

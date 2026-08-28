@@ -1464,3 +1464,65 @@ exact bytes**, and at the time of writing it has not yet run against this work. 
 bytes that reproduce locally, that is a real finding about environment dependence and not a reason
 to relax the gate. T3.5 is not complete, and `PLAN.md` leaves it unchecked, until that run is green
 and its id is recorded.
+
+---
+
+## D3.12 A correction to D0.5: `pyarrow` was an undeclared dependency
+
+**Date:** 2026-08-28
+**Status:** settled by Jane
+**Corrects:** D0.5's dependency record, which enumerated the pins "recorded from the authoring
+environment on 2026-07-27" and omitted one that `fetch.py` has required since T3.1.
+
+The first canonical run of `make reproduce` failed:
+
+    python scripts/check_reproduction.py --preflight --canonical
+      version:     3.11.15
+      canonical interpreter check passed
+    python experiments/swebench/fetch.py
+      gate 0: board verified, 180 entries in published order
+    ModuleNotFoundError: No module named 'pyarrow'      fetch.py:496
+
+**Not a byte mismatch.** The `reproduce` step failed while `worktree is clean after reproduction`
+passed, so no artifact differed. That distinction was readable in a single run only because the
+second step carries `if: ${{ always() }}`, which D3.11 added for a different reason.
+
+`pyarrow` is imported at `fetch.py:496` to read the pinned dataset shard, parquet having no stdlib
+reader, and it was declared nowhere: not `requirements.txt`, which CI installs, not
+`pyproject.toml`, and not the workflow. **`make reproduce` could not have succeeded on a fresh
+clone.** Every local run passed because the authoring machine happens to ship pyarrow.
+
+**Why it stayed hidden for five tasks and two phases.** Until T3.5, CI asserted that `make
+reproduce` **fails**, per D0.5, and a test asserted the same. The gate was correct and load-bearing:
+a no-op exiting 0 would have produced evidence while proving nothing. But its consequence was that
+`fetch.py` never ran in CI, so the one execution that would have surfaced the omission was the one
+the old gate guaranteed would never happen. The defect was not missed through inattention; it was
+unobservable by construction, and it became observable the moment reproduction became real.
+
+**The pin is `pyarrow==23.0.0`, and this is a repair rather than an upgrade.** The local
+installation is dated 2026-01-25 and T3.1 landed 2026-07-29, so 23.0.0 is almost certainly the
+authoring version, and it is the only version under which byte-identical reproduction has been
+observed in this repository. 23.0.1 exists and is a security and bugfix release, but it is different
+software with no reproduction evidence here, and its disclosed CVE concerns the IPC file reader with
+prebuffering while this path reads Parquet. Under D0.5 a bump requires re-running every experiment's
+reproduce target and recording the outcome, so **the upgrade is considered on its own after T3.5
+closes and is not folded into a repair.**
+
+**It belongs in `requirements.txt` and not in `pyproject.toml`.** The latter declares the engine's
+runtime surface, which PLAN.md section 2 holds portable to pyodide on stdlib plus numpy and scipy,
+enforced by `make import-check`. `fetch.py` lives in `experiments/`, which D0.4 permits heavier
+dependencies. The two files answer different questions and the pin answers only one of them.
+
+**The durable guard is derived, not listed.** `tests/test_tooling.py` now walks every `.py` under
+`experiments/` and `scripts/` with `check_imports.imported_roots`, subtracts stdlib and
+repository-local roots, and fails on any root absent from `requirements.txt`. It reuses the import
+extractor the boundary checker already owns rather than adding a second AST walker, a fourth
+guardrail script, another make target, or another CI step: pytest already runs before reproduction.
+A listed set of expected dependencies would carry the same defect as the record it replaces, since
+it cannot see the import its author did not think to add. Both directions were shown failing:
+removing the pin, and adding an undeclared import under `experiments/`.
+
+**What this says about the reproduction gate.** Its first real execution found a defect that had
+survived two phases, five tasks and a green local suite, and the finding was about the repository's
+central claim rather than about a number in it. A gate that had passed on its first run would have
+told us less.

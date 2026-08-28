@@ -12,6 +12,17 @@
 numpy==1.26.4
 scipy==1.17.1
 
+# Experiment 1 only, not an engine dependency. `metrology/` stays portable to pyodide on
+# stdlib plus numpy and scipy (PLAN.md section 2, enforced by `make import-check`), so this
+# is deliberately absent from pyproject.toml. `experiments/swebench/fetch.py` reads the
+# pinned dataset shard, and parquet has no stdlib reader.
+#
+# Undeclared from T3.1 until the first canonical run of `make reproduce` failed on it
+# (D3.12). 23.0.0 rather than a later release: it is the version under which byte-identical
+# reproduction has been observed here, and an upgrade is a separate decision requiring its
+# own reproduce run, per D0.5.
+pyarrow==23.0.0
+
 # Development tooling. Pinned for the same reason: ruff formatting and lint output must not
 # drift between a local run and CI.
 pytest==8.2.0
