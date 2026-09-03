@@ -1526,3 +1526,70 @@ removing the pin, and adding an undeclared import under `experiments/`.
 survived two phases, five tasks and a green local suite, and the finding was about the repository's
 central claim rather than about a number in it. A gate that had passed on its first run would have
 told us less.
+
+---
+
+## D3.13 The canonical environment's bytes are the reference, and macOS was not it
+
+**Date:** 2026-09-03
+**Status:** settled by Jane
+**Applies:** D0.9's environment hierarchy to the committed artifacts, which had never been produced
+under it. No decision is reversed here; one is finally enforced.
+
+The second canonical run of `make reproduce`, run 33179082136, got past the pyarrow repair and
+failed on bytes. `--verify` and the independent `git status` backstop both failed, which is the
+opposite signature from run 33176434557: a clean tree there meant a dependency fault, a dirty tree
+here means a real mismatch.
+
+**One field, 14 occurrences, two files.** `results.json` and `cards.json` differed only in
+`mde.max_attainable_power`, across seven distinct float transitions:
+
+| committed (macOS) | canonical (Linux) | steps |
+|---|---|---|
+| 0.9999999999511919 | 0.999999999951192 | 1 |
+| 0.999999999999999 | 0.9999999999999991 | 1 |
+| 0.9999999999999993 | 0.9999999999999994 | 1 |
+| 0.9999999999999993 | 0.9999999999999996 | 2 |
+| 0.9999999999999994 | 0.9999999999999993 | 1 |
+| 0.9999999999999998 | 1.0 | 2 |
+| 1.0 | 0.9999999999999999 | 1 |
+
+Every pair is one or two adjacent representable doubles apart, a relative difference of one to two
+times machine epsilon. `pairs.csv`, `cards.html`, `README.md` and `aggregates.json` reproduced
+byte-identically, and the headline reproduced exactly: separable 0 of 19, gateway floor 10, largest
+observed gap 7. The field is registered `pow3`, so every rendered form is `1.000` on both platforms.
+Nothing a reader sees differed.
+
+**The dependence is somewhere in the numerical stack, and this entry does not name where.**
+`mcnemar_power` reaches `scipy.stats.binom` and `np.dot`. SciPy documents its binomial routines as
+Boost Math backed, and NumPy documents `dot` as possibly dispatching to an optimized BLAS. Either
+boundary could contribute, and the run establishes platform dependence without isolating it.
+Attributing it to a specific library would be a guess dressed as a finding.
+
+**The committed bytes were never canonical.** D0.9 declares `ubuntu-24.04` with Python 3.11.15 the
+canonical environment and a local run "a convenience, not evidence". T3.1 and T3.2 ran on macOS and
+their output became the reference that canonical CI was then asked to match. The hierarchy was
+inverted, and until T3.5 nothing could detect it, because CI asserted that `make reproduce` fails.
+
+So the committed artifacts are replaced with the exact bytes run 33179082136 produced, applied from
+the unified patch that run's own backstop printed. This is what D0.9 already said; it had simply
+never been enforceable.
+
+**Quantizing the field was considered and rejected.** Rounding storage to three decimals would be a
+smaller textual diff and a larger methodological change. `pow3` is a presentation rule: the T3.3
+outputs design maps a stored full-precision value to `"1.000"`, and `run.py` stores the computed
+float unchanged. Collapsing the two would conflate a storage contract with a display contract, and
+it would render values genuinely below one as a literal `1.0`, which is a stronger claim than the
+computation supports. A tolerance in the byte check was rejected for the same family of reason:
+"byte-identical within an epsilon" is a different and weaker guarantee, and it would conceal the
+next real mismatch. Redefining canonical as macOS would contradict both D0.9 and the workflow.
+
+**No new code and no new test.** The canonical gate is the control, and it worked: it found an
+undeclared dependency on its first run and a platform-dependent value on its second, both latent
+since Phase 3. Adding a guard here would be guarding a defect the existing guard already catches.
+
+**What this commits us to.** Committed result bytes come from canonical CI. A macOS `make reproduce`
+that reports a `max_attainable_power` mismatch after this entry is expected development behaviour
+and not a regression, which is why no local reproduction was run after adopting these bytes: it
+would knowingly rewrite them. Any future task that regenerates results either runs canonically or
+adopts the canonical run's output the way this entry does.
