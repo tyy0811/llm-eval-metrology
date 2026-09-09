@@ -25,13 +25,13 @@
       {
         "discordance_rate": 0.1,
         "instances": 20.336914062500004,
-        "max_attainable_power": 0.9999999999999996,
+        "max_attainable_power": 0.9999999999999993,
         "status": "attainable"
       },
       {
         "discordance_rate": 0.2,
         "instances": 28.72314453125,
-        "max_attainable_power": 0.9999999999999994,
+        "max_attainable_power": 0.9999999999999993,
         "status": "attainable"
       },
       {
@@ -64,7 +64,7 @@
       "discordance_rate": 0.072,
       "mde": {
         "instances": 17.384765625,
-        "max_attainable_power": 0.999999999951192,
+        "max_attainable_power": 0.9999999999511919,
         "rate_difference": 0.03476953125,
         "status": "attainable"
       },
@@ -124,7 +124,7 @@
       "discordance_rate": 0.13,
       "mde": {
         "instances": 23.18084716796875,
-        "max_attainable_power": 0.9999999999999993,
+        "max_attainable_power": 0.9999999999999994,
         "rate_difference": 0.0463616943359375,
         "status": "attainable"
       },
@@ -184,7 +184,7 @@
       "discordance_rate": 0.112,
       "mde": {
         "instances": 21.52294921875,
-        "max_attainable_power": 0.9999999999999999,
+        "max_attainable_power": 1.0,
         "rate_difference": 0.0430458984375,
         "status": "attainable"
       },
@@ -214,7 +214,7 @@
       "discordance_rate": 0.132,
       "mde": {
         "instances": 23.360229492187496,
-        "max_attainable_power": 1.0,
+        "max_attainable_power": 0.9999999999999998,
         "rate_difference": 0.04672045898437499,
         "status": "attainable"
       },
@@ -304,7 +304,7 @@
       "discordance_rate": 0.112,
       "mde": {
         "instances": 21.52294921875,
-        "max_attainable_power": 0.9999999999999999,
+        "max_attainable_power": 1.0,
         "rate_difference": 0.0430458984375,
         "status": "attainable"
       },
@@ -364,7 +364,7 @@
       "discordance_rate": 0.132,
       "mde": {
         "instances": 23.360229492187496,
-        "max_attainable_power": 1.0,
+        "max_attainable_power": 0.9999999999999998,
         "rate_difference": 0.04672045898437499,
         "status": "attainable"
       },
@@ -394,7 +394,7 @@
       "discordance_rate": 0.136,
       "mde": {
         "instances": 23.711181640625004,
-        "max_attainable_power": 0.9999999999999999,
+        "max_attainable_power": 1.0,
         "rate_difference": 0.047422363281250005,
         "status": "attainable"
       },
@@ -424,7 +424,7 @@
       "discordance_rate": 0.072,
       "mde": {
         "instances": 17.384765625,
-        "max_attainable_power": 0.999999999951192,
+        "max_attainable_power": 0.9999999999511919,
         "rate_difference": 0.03476953125,
         "status": "attainable"
       },
@@ -484,7 +484,7 @@
       "discordance_rate": 0.114,
       "mde": {
         "instances": 21.7159423828125,
-        "max_attainable_power": 0.9999999999999998,
+        "max_attainable_power": 0.9999999999999999,
         "rate_difference": 0.043431884765625,
         "status": "attainable"
       },
@@ -514,7 +514,7 @@
       "discordance_rate": 0.112,
       "mde": {
         "instances": 21.52294921875,
-        "max_attainable_power": 0.9999999999999999,
+        "max_attainable_power": 1.0,
         "rate_difference": 0.0430458984375,
         "status": "attainable"
       },

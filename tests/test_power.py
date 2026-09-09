@@ -78,6 +78,18 @@ class TestRejectionRegion:
 
 
 class TestUnconditionalPower:
+    def test_power_matches_fixed_order_reference_exactly(self) -> None:
+        """A one-ULP BLAS reduction drift breaks the committed artifact byte gate."""
+        n, q, alpha = 500, 0.106, 0.05
+        total = math.fsum(
+            float(probability)
+            for d, probability in enumerate(binom.pmf(range(n + 1), n, q))
+            if min(1.0, 2.0 / 2**d) <= alpha
+        )
+        expected = float(min(1.0, max(0.0, total)))
+
+        assert mcnemar_power(n=n, discordance_rate=q, rate_difference=q, alpha=alpha) == expected
+
     def test_size_under_the_null_does_not_exceed_alpha(self) -> None:
         """At delta = 0 the power function is the achieved size of a discrete test."""
         size = mcnemar_power(n=200, discordance_rate=0.3, rate_difference=0.0, alpha=0.05)

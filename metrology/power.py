@@ -212,7 +212,11 @@ def mcnemar_power(
 
     # Clamped because this is a probability. Summing ~n float terms can overshoot 1 by an ulp,
     # and an out-of-range "probability" would then fail the MdeResult invariant downstream.
-    return float(min(1.0, max(0.0, np.dot(d_probs, contribution))))
+    total = math.fsum(
+        float(probability) * float(weight)
+        for probability, weight in zip(d_probs, contribution, strict=True)
+    )
+    return float(min(1.0, max(0.0, total)))
 
 
 @cache

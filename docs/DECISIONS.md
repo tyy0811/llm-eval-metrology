@@ -1593,3 +1593,68 @@ that reports a `max_attainable_power` mismatch after this entry is expected deve
 and not a regression, which is why no local reproduction was run after adopting these bytes: it
 would knowingly rewrite them. Any future task that regenerates results either runs canonically or
 adopts the canonical run's output the way this entry does.
+
+---
+
+## D3.14 A correction to D3.13: the power sum varies within canonical CI
+
+**Date:** 2026-09-03
+**Revised:** 2026-09-09
+**Status:** settled by Jane, corrective spec approved 2026-09-09
+**Corrects:** D3.13's diagnosis and its remedy. The bytes D3.13 adopted were one sample of a
+varying computation, not an established deterministic canonical output. D3.13 stands in the register
+because it is append-only, and its rejections of quantization, of a byte-check tolerance, and of
+redefining canonical as macOS all still hold.
+
+D3.13 concluded that `max_attainable_power` was platform dependent, and adopted the bytes canonical
+run 33179082136 produced. Run 33764897089 then took those exact bytes and failed to reproduce them.
+
+**The two runs recorded the same environment fields:** kernel `Linux 6.17.0-1022-azure x86_64`, image
+`Ubuntu 24.04.4 LTS`, interpreter 3.11.15, numpy 1.26.4, scipy 1.17.1, pyarrow 23.0.0. Seven
+distinct transitions, every one a single adjacent double, including `0.9999990818191731` to
+`0.999999081819173`. Both values are below 1.0, so the final clamp cannot explain their difference.
+
+**So the field is nondeterministic, and D0.5 already names that a bug to fix rather than a caveat to
+write.** D3.13's macOS/Linux explanation was a hypothesis, not an isolated cause. The second
+canonical run falsified the proposed remedy of adopting one Linux run's bytes. It does not rule
+out additional platform effects.
+
+**A local mechanism is isolated; the Azure attribution remains an inference.** Forcing kernel selection through
+`OPENBLAS_CORETYPE` at one thread reproduces the difference locally: with the probability and
+contribution arrays hashed identical, the Haswell kernel and the Nehalem kernel return `np.dot`
+results one double apart, while `math.fsum` returns the same value under both. OpenBLAS documents
+`OPENBLAS_CORETYPE` as a kernel selector. CI did not record CPU models or OpenBLAS core selection,
+so different Azure hardware or kernels are a plausible explanation, not a measured CI cause.
+
+**Thread pinning was tested and is insufficient.** The probe ran at a single thread, so the
+variation is kernel selection rather than cross-thread reduction order, and `OPENBLAS_NUM_THREADS`
+constrains something that was not varying. This is recorded because it is the obvious cheap fix and
+it does not work.
+
+**The fix is fixed-order accumulation, in one reduction.** The approved change replaces
+`mcnemar_power`'s final line with a
+`math.fsum` over `float(probability) * float(weight)` pairs, with `strict=True` on the `zip` and the
+existing clamp unchanged. `math` was already imported. No helper, no dependency, no environment
+variable, no Kahan implementation, and no serialization change. The `float()` coercions matter: they
+keep the products in Python floats rather than NumPy scalar operations; they do not establish
+a separate defect in NumPy scalar multiplication.
+
+**The scope review leaves bootstrap reductions unchanged.** The spec lists the mean sites in
+`paired.py`, including `_bootstrap_means` at line 321, omitted by the first draft. The stored
+bootstrap estimates and bounds were byte-identical in both CI comparisons. That observation
+does not prove these reductions can never vary; any future drift requires its own diagnosis.
+
+**One green run will not close this.** A single canonical pass is consistent with the defect
+surviving and merely not firing. Two green runs of the **same commit** are required, the second
+obtained by rerunning that SHA. Another runner allocation may vary the hardware, but that is not
+guaranteed. Record both attempt numbers and verdicts under the same run ID. Two passes are the
+required acceptance evidence, not a universal proof of determinism.
+
+**What this commits us to.** Change this reduction, add one exact-equality regression
+test, regenerate only the two JSON artifacts, and require two green canonical executions of the
+same corrected commit before close-out. The canonical environment, full-precision storage and
+byte gate stay unchanged. Further mismatches require diagnosis; they do not authorize quantization
+or adoption of another sampled output. The exact regression was demonstrated red, then green,
+and `make check PYTHON=python3.11` passed all 906 tests and remaining gates on 2026-09-09.
+Canonical acceptance was pending when this correction was committed; the plan and session handoff
+record the subsequent attempt-specific verdicts.
